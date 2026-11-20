@@ -1,0 +1,52 @@
+# ============================================================
+#  Configuración del asistente de inversión
+#  Fórmula Mágica (Greenblatt) + filtro F-Score (Piotroski)
+# ============================================================
+
+# La SEC exige identificarse con un email para descargar sus datos (solo se usa para eso).
+# En GitHub se configura como secreto (SEC_CONTACTO) y esto se deja vacío.
+sec_contacto: ""
+
+# Qué empresas analizar:
+#   sp500   -> las 500 grandes de EE. UU. (más rápido)
+#   sp1500  -> S&P 500 + 400 + 600: grandes, medianas y pequeñas (recomendado)
+#   archivo -> usa tu propia lista en tickers.csv
+universo: sp1500
+
+# Greenblatt excluye bancos, aseguradoras y eléctricas porque sus balances
+# no encajan en la fórmula. Las inmobiliarias (REITs) iban dentro de "financieras".
+sectores_excluidos: [Financials, Utilities, Real Estate]
+
+# Tamaño mínimo de empresa (capitalización en dólares). Evita empresas diminutas.
+capitalizacion_minima: 300000000
+
+# Filtro de calidad de Piotroski (0 a 9). Se descartan las empresas por debajo.
+# Pon 0 para usar solo la Fórmula Mágica.
+fscore_minimo: 5
+
+# Reglas de la cartera (se copian en cada cartera simulada al crearla)
+cartera:
+  num_posiciones: 20            # Greenblatt recomienda 20-30 empresas
+  compras_por_tanda: 5          # cuántas compras como máximo en cada revisión
+  frecuencia_meses: 3           # cada cuánto se revisa la cartera
+  mantener_dias: 365            # cuánto se mantiene cada acción
+  renovar_si_sigue_en_lista: true   # si al cumplir el año sigue entre las mejores, se queda
+  acciones_fraccionadas: false  # true si tu bróker permite comprar fracciones de acción
+  comision_pct: 0.001           # 0,1 % por operación
+  comision_minima: 1.0          # en dólares
+
+# Índice con el que compararte
+referencia: SPY
+
+datos:
+  cache_dias: 7                 # cada cuántos días se vuelven a descargar las cuentas de la SEC
+  pausa_segundos: 0.15          # pausa entre descargas (la SEC admite hasta 10 por segundo)
+
+alertas:
+  dia_informe: 0                # día del informe semanal (0 = lunes ... 6 = domingo)
+  top_informe: 15               # cuántas empresas mostrar en el informe
+  mis_acciones: []              # acciones que tienes de verdad, para vigilarlas. Ej: [AAPL, MSFT]
+
+web:
+  activo: true                  # genera el panel para el móvil en la carpeta docs/
+  url_panel: "https://luquers.github.io/inversor_ia/"               # cuando lo publiques, pon aquí su dirección para que salga en Telegram

@@ -1,0 +1,77 @@
+name: Acciones manuales
+
+on:
+  workflow_dispatch:
+    inputs:
+      accion:
+        description: "Qué quieres hacer"
+        type: choice
+        options:
+          - Crear cartera ficticia
+          - Simular el pasado
+          - Informe ahora
+      nombre:
+        description: "Nombre de la cartera (solo para crearla)"
+        default: "principal"
+      capital:
+        description: "Capital ficticio en dólares"
+        default: "10000"
+      inicio:
+        description: "Simular el pasado desde (AAAA-MM-DD). Vacío = la fecha más antigua posible"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inversor
+  cancel-in-progress: false
+
+jobs:
+  manual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Recuperar los datos ya descargados
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: datos-${{ github.run_id }}
+          restore-keys: datos-
+
+      - name: Ejecutar
+        env:
+          SEC_CONTACTO: ${{ secrets.SEC_CONTACTO }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ACCION: ${{ inputs.accion }}
+          NOMBRE: ${{ inputs.nombre }}
+          CAPITAL: ${{ inputs.capital }}
+          INICIO: ${{ inputs.inicio }}
+        run: |
+          case "$ACCION" in
+            "Crear cartera ficticia") python main.py crear --nombre "$NOMBRE" --capital "$CAPITAL" ;;
+            "Simular el pasado")
+              if [ -n "$INICIO" ]; then python main.py pasado --capital "$CAPITAL" --inicio "$INICIO"
+              else python main.py pasado --capital "$CAPITAL"; fi ;;
+            "Informe ahora") python main.py diario --forzar-informe ;;
+          esac
+
+      - name: Guardar los cambios
+        run: |
+          git config user.name "asistente-inversion"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add carteras historico docs
+          git diff --cached --quiet || git commit -m "$ACCION $(date -u +%F)"
+          git push
+        env:
+          ACCION: ${{ inputs.accion }}

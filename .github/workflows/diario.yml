@@ -1,0 +1,49 @@
+name: Actualización diaria
+
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"   # de lunes a viernes, 22:30 UTC (tras el cierre de Wall Street)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inversor
+  cancel-in-progress: false
+
+jobs:
+  diario:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Recuperar los datos ya descargados
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: datos-${{ github.run_id }}
+          restore-keys: datos-
+
+      - name: Actualizar carteras, informe y panel
+        env:
+          SEC_CONTACTO: ${{ secrets.SEC_CONTACTO }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py diario
+
+      - name: Guardar los cambios
+        run: |
+          git config user.name "asistente-inversion"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add carteras historico docs
+          git diff --cached --quiet || git commit -m "Actualización $(date -u +%F)"
+          git push

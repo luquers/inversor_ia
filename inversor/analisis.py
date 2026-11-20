@@ -1,0 +1,150 @@
+"""Ranking de hoy, informes de texto, gráficos y envío de alertas."""
+from __future__ import annotations
+
+import math
+import os
+
+import pandas as pd
+import requests
+
+from .datos import RAIZ, cargar_sec, descargar_precios, obtener_universo
+from .puntuacion import elegibles, evaluar, ordenar
+from .sec import HistorialAcciones, tabla_anual
+
+RESULTADOS = RAIZ / "resultados"   # archivos para ti (no se suben a GitHub)
+HISTORICO = RAIZ / "historico"     # estado que se guarda entre ejecuciones (sí se sube)
+
+
+# ---------------------------------------------------------------- ranking
+def preparar_empresas(cfg: dict):
+    """Universo + cuentas de la SEC listas para puntuar."""
+    universo = obtener_universo(cfg)
+    sec = cargar_sec(universo["ticker"], cfg)
+    tablas = {t: tabla_anual(d) for t, d in sec.items()}
+    tablas = {t: tb for t, tb in tablas.items() if not tb.empty}
+    acciones = {t: HistorialAcciones(sec[t]["acciones_hist"]) for t in tablas}
+    for t, d in sec.items():   # completa nombres que falten con el registro oficial
+        universo.loc[(universo["ticker"] == t) & (universo["nombre"] == ""), "nombre"] = d.get("nombre", "")
+    return universo, tablas, acciones
+
+
+def ranking_actual(cfg: dict) -> pd.DataFrame:
+    universo, tablas, acciones = preparar_empresas(cfg)
+    print("Descargando precios actuales...")
+    cierres, _, splits = descargar_precios(list(tablas), periodo="1y")
+    ultimo = cierres.ffill().iloc[-1]
+    caps = {t: acciones[t].capitalizacion(ultimo.get(t), splits.get(t)) for t in tablas}
+    ranking = ordenar(evaluar(universo, tablas, caps), cfg["capitalizacion_minima"])
+    ranking["apto"] = ranking.index.isin(elegibles(ranking, cfg["fscore_minimo"]))
+    # Se guarda para el panel del móvil
+    HISTORICO.mkdir(exist_ok=True)
+    ranking.to_csv(HISTORICO / "ranking_panel.csv")
+    (HISTORICO / "ranking_panel_fecha.txt").write_text(str(pd.Timestamp.today().date()))
+    return ranking
+
+
+def guardar_ranking(ranking: pd.DataFrame):
+    RESULTADOS.mkdir(exist_ok=True)
+    hoy = pd.Timestamp.today().strftime("%Y-%m-%d")
+    ranking.to_csv(RESULTADOS / f"ranking_{hoy}.csv")
+    return RESULTADOS / f"ranking_{hoy}.csv"
+
+
+def tabla_texto(ranking: pd.DataFrame, n: int) -> str:
+    aptos = ranking[ranking["apto"]].head(n)
+    lineas = [f"{'#':>3} {'Ticker':<7} {'Empresa':<28} {'R.Benef':>8} {'R.Capital':>9} {'F':>3}"]
+    for i, (t, f) in enumerate(aptos.iterrows(), 1):
+        lineas.append(f"{i:>3} {t:<7} {str(f['nombre'])[:28]:<28} {f['rend_beneficios']*100:>7.1f}% "
+                      f"{f['rend_capital']*100:>8.0f}% {int(f['fscore']) if not pd.isna(f['fscore']) else '-':>3}")
+    return "\n".join(lineas)
+
+
+def avisos_vigilancia(ranking: pd.DataFrame, cfg: dict, vigiladas) -> list[str]:
+    """Avisos sobre acciones que tienes (reales o en carteras ficticias)."""
+    avisos = []
+    for t in sorted(set(vigiladas)):
+        if t not in ranking.index:
+            avisos.append(f"{t}: no está entre las empresas analizadas o le faltan datos")
+            continue
+        f = ranking.loc[t]
+        puesto = f"puesto {int(f['puesto'])}" if not pd.isna(f["puesto"]) else "fuera del ranking"
+        if pd.isna(f["fscore"]) or f["fscore_evaluables"] < 7:
+            avisos.append(f"{t}: no hay datos suficientes para calcular su F-Score ({puesto})")
+        elif f["fscore"] < cfg["fscore_minimo"]:
+            avisos.append(f"{t}: su F-Score ha bajado a {int(f['fscore'])}/9, por debajo de tu mínimo ({puesto})")
+    return avisos
+
+
+def informe_semanal(ranking: pd.DataFrame, cfg: dict, vigiladas: list[str]) -> str:
+    n = cfg["alertas"]["top_informe"]
+    partes = [f"📊 Informe semanal – Fórmula Mágica + F-Score (mínimo {cfg['fscore_minimo']})",
+              "R.Benef = rendimiento de beneficios (cuánto de barata); R.Capital = rentabilidad del negocio",
+              "", tabla_texto(ranking, n)]
+
+    # Novedades respecto al informe anterior
+    HISTORICO.mkdir(exist_ok=True)
+    ruta_previo = HISTORICO / "ultimo_ranking.csv"
+    top_actual = ranking[ranking["apto"]].head(n).index.tolist()
+    if ruta_previo.exists():
+        previo = pd.read_csv(ruta_previo, index_col=0)
+        top_previo = previo[previo["apto"]].head(n).index.tolist()
+        entran = [t for t in top_actual if t not in top_previo]
+        salen = [t for t in top_previo if t not in top_actual]
+        if entran or salen:
+            partes += ["", f"🆕 Entran en el top: {', '.join(entran) or '—'}", f"↩️ Salen del top: {', '.join(salen) or '—'}"]
+    ranking.to_csv(ruta_previo)
+
+    avisos = avisos_vigilancia(ranking, cfg, vigiladas)
+    if avisos:
+        partes += ["", "👀 Vigilancia de tus acciones:"] + [f"⚠️ {a}" for a in avisos]
+    url = (cfg.get("web") or {}).get("url_panel")
+    if url:
+        partes += ["", f"Panel completo: {url}"]
+    return "\n".join(partes)
+
+
+# ---------------------------------------------------------------- métricas y gráficos
+def metricas_serie(serie: pd.Series) -> dict:
+    serie = serie.dropna()
+    if len(serie) < 2:
+        return {}
+    total = serie.iloc[-1] / serie.iloc[0] - 1
+    anos = (serie.index[-1] - serie.index[0]).days / 365.25
+    return {
+        "rentabilidad_total_%": round(float(total) * 100, 2),
+        "rentabilidad_anual_%": round(float((1 + total) ** (1 / anos) - 1) * 100, 2) if anos >= 0.5 else None,
+        "caida_maxima_%": round(float(((serie / serie.cummax()) - 1).min()) * 100, 2),
+        "volatilidad_anual_%": round(float(serie.pct_change().std()) * math.sqrt(252) * 100, 2),
+    }
+
+
+def grafico(curva: pd.DataFrame, ruta, titulo: str, nombre_ref: str):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(curva.index, curva["cartera"], label="Tu estrategia", linewidth=2)
+    ax.plot(curva.index, curva["referencia"], label=f"{nombre_ref} (referencia)", linewidth=1.5, alpha=0.8)
+    ax.set_title(titulo)
+    ax.set_ylabel("Valor de la cartera ($)")
+    ax.grid(alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(ruta, dpi=120)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------- alertas
+def enviar_alerta(mensaje: str):
+    """Muestra el mensaje y, si hay bot de Telegram configurado, lo envía al móvil."""
+    print(mensaje)
+    token, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    if not (token and chat):
+        return
+    for i in range(0, len(mensaje), 3900):   # Telegram admite ~4000 caracteres por mensaje
+        try:
+            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          data={"chat_id": chat, "text": mensaje[i:i + 3900]}, timeout=20)
+        except Exception as e:
+            print(f"No se pudo enviar a Telegram: {e}")
