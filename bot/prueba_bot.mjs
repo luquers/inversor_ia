@@ -73,6 +73,13 @@ function htmlValido(texto) {
 assert.equal((await telegram({}, "mala")).status, 403);
 assert.equal((await worker.fetch(new Request("https://bot.test/notificar", { method: "POST", body: "{}" }), env)).status, 403);
 
+// 1b. El administrador pulsa «Abrir menú» en un aviso sin haber escrito nunca al bot
+await pulsa(ADMIN, "Javi", "abrir");
+assert.equal(enviadosA(ADMIN)[0]?.metodo, "sendMessage", "El administrador siempre puede abrir el menú");
+assert.equal(JSON.parse(kv.get(`u:${ADMIN}`)).estado, "aprobado");
+kv.clear();
+reiniciar();
+
 // 2. Una desconocida escribe: queda pendiente y se avisa al administrador
 await mensaje(AMIGA, "Lucia", "/start");
 assert.match(enviadosA(AMIGA)[0].text, /privado/);

@@ -368,7 +368,12 @@ async function atenderBoton(env, cq) {
   const chat = cq.message?.chat?.id ?? id;
   const mensaje = cq.message?.message_id;
   const accion = cq.data || "menu";
-  const u = await leerUsuario(env, id);
+  let u = await leerUsuario(env, id);
+  if (esAdmin(env, id) && (!u || u.estado !== "aprobado")) {
+    // El administrador siempre tiene acceso, aunque pulse un botón antes de haber escrito al bot
+    u = await registrar(env, cq.from);
+    await guardarUsuario(env, u);
+  }
   const [tipo, objetivo] = accion.split(":");
 
   if ((tipo === "ok" || tipo === "no") && esAdmin(env, id)) {
