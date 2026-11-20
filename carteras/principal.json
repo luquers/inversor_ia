@@ -1,0 +1,123 @@
+{
+  "nombre": "principal",
+  "capital_inicial": 10000.0,
+  "fecha_inicio": "2026-11-20",
+  "ultimo_rebalanceo": "2026-11-20",
+  "reglas": {
+    "num_posiciones": 20,
+    "compras_por_tanda": 5,
+    "frecuencia_meses": 3,
+    "mantener_dias": 365,
+    "renovar_si_sigue_en_lista": true,
+    "acciones_fraccionadas": false,
+    "comision_pct": 0.001,
+    "comision_minima": 1.0
+  },
+  "fscore_minimo": 5,
+  "referencia": "SPY",
+  "precio_referencia_inicio": 693.6199951171875,
+  "cartera": {
+    "efectivo": 7628.939990997314,
+    "posiciones": {
+      "COLL": {
+        "acciones": 20,
+        "precio_compra": 24.68000030517578,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 24.68000030517578
+      },
+      "PTCT": {
+        "acciones": 8,
+        "precio_compra": 56.310001373291016,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 56.310001373291016
+      },
+      "APA": {
+        "acciones": 11,
+        "precio_compra": 45.22999954223633,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 45.22999954223633
+      },
+      "KBH": {
+        "acciones": 10,
+        "precio_compra": 45.935001373291016,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 45.935001373291016
+      },
+      "HRB": {
+        "acciones": 10,
+        "precio_compra": 46.5099983215332,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 46.5099983215332
+      }
+    },
+    "operaciones": [
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "COLL",
+        "acciones": 20,
+        "precio": 24.68,
+        "importe": 493.6,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Puesto 1 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "PTCT",
+        "acciones": 8,
+        "precio": 56.31,
+        "importe": 450.48,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Puesto 2 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "APA",
+        "acciones": 11,
+        "precio": 45.23,
+        "importe": 497.53,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Puesto 3 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "KBH",
+        "acciones": 10,
+        "precio": 45.935,
+        "importe": 459.35,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Puesto 4 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "HRB",
+        "acciones": 10,
+        "precio": 46.51,
+        "importe": 465.1,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Puesto 5 del ranking"
+      }
+    ]
+  },
+  "historial": [
+    {
+      "fecha": "2026-11-20",
+      "cartera": 9995.0,
+      "referencia": 10000.0
+    }
+  ]
+}
