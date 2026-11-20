@@ -33,27 +33,53 @@ def guardar(estado):
         json.dump(estado, f, ensure_ascii=False, indent=2)
 
 
-def crear_cartera(nombre, capital, cfg):
+ESTILOS = ("trimestral", "diaria")
+
+
+def reglas_para(cfg, estilo="trimestral"):
+    if estilo not in ESTILOS:
+        raise SystemExit(f"Estilo desconocido '{estilo}'. Usa uno de: {', '.join(ESTILOS)}")
+    reglas = dict(cfg["cartera"])
+    if estilo == "diaria":
+        reglas.update(cfg.get("cartera_diaria") or {})
+        reglas["estilo"] = "diaria"
+    return reglas
+
+
+def es_diaria(estado):
+    return estado["reglas"].get("estilo") == "diaria"
+
+
+def crear_cartera(nombre, capital, cfg, estilo="trimestral"):
     if _ruta(nombre).exists():
         raise SystemExit(f"Ya existe una cartera llamada '{nombre}'.")
+    reglas = reglas_para(cfg, estilo)
     estado = {
         "nombre": nombre, "capital_inicial": float(capital),
         "fecha_inicio": str(pd.Timestamp.today().date()), "ultimo_rebalanceo": None,
         # Las reglas se congelan: cambiar config.yaml después no altera esta cartera
-        "reglas": cfg["cartera"], "fscore_minimo": cfg["fscore_minimo"],
+        "reglas": reglas, "fscore_minimo": cfg["fscore_minimo"],
         "referencia": cfg["referencia"], "precio_referencia_inicio": None,
-        "cartera": Cartera(capital, cfg["cartera"]).a_dict(), "historial": [],
+        "cartera": Cartera(capital, reglas).a_dict(), "historial": [],
     }
     guardar(estado)
     return estado
+
+
+def proxima_revision(estado):
+    """Fecha de la próxima revisión, o None si no hay ninguna prevista o la cartera se revisa a diario."""
+    if not estado["ultimo_rebalanceo"] or es_diaria(estado):
+        return None
+    return pd.Timestamp(estado["ultimo_rebalanceo"]) + pd.DateOffset(months=estado["reglas"]["frecuencia_meses"])
 
 
 def toca_rebalancear(estado, hoy=None):
     if not estado["ultimo_rebalanceo"]:
         return True
     hoy = hoy or pd.Timestamp.today().normalize()
-    siguiente = pd.Timestamp(estado["ultimo_rebalanceo"]) + pd.DateOffset(months=estado["reglas"]["frecuencia_meses"])
-    return hoy >= siguiente
+    if es_diaria(estado):
+        return hoy > pd.Timestamp(estado["ultimo_rebalanceo"])
+    return hoy >= proxima_revision(estado)
 
 
 def actualizar_cartera(nombre, cfg, ranking=None):
@@ -112,9 +138,10 @@ def describir_cartera(estado, operaciones=()) -> str:
         for op in operaciones:
             extra = f" ({op['resultado_pct']:+.1f} %)" if op.get("resultado_pct") is not None else ""
             lineas.append(f"  {op['tipo']:<8} {op['ticker']:<6} a {op['precio']:.2f}{extra} – {op['motivo']}")
-    if estado["ultimo_rebalanceo"]:
-        siguiente = pd.Timestamp(estado["ultimo_rebalanceo"]) + pd.DateOffset(months=estado["reglas"]["frecuencia_meses"])
-        lineas.append(f"Próxima revisión: {siguiente.date()}")
+    if es_diaria(estado):
+        lineas.append("Revisión: cada día de mercado")
+    elif proxima_revision(estado) is not None:
+        lineas.append(f"Próxima revisión: {proxima_revision(estado).date()}")
     return "\n".join(lineas)
 
 

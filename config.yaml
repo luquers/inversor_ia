@@ -35,6 +35,16 @@ cartera:
   comision_pct: 0.001           # 0,1 % por operación
   comision_minima: 1.0          # en dólares
 
+# Estilo alternativo "diaria": se usa al crear una cartera con estilo diaria.
+# Parte de las reglas de "cartera" y cambia solo lo que se indica aquí:
+#   - se revisa cada día de mercado (frecuencia_meses y mantener_dias no se usan)
+#   - compra empresas que están entre las num_posiciones mejores, si hay hueco
+#   - vende en cuanto una empresa cae fuera de las vender_fuera_del_top mejores
+#     o deja de pasar el filtro de F-Score
+cartera_diaria:
+  compras_por_tanda: 20         # puede llenar los huecos el mismo día
+  vender_fuera_del_top: 50      # margen para no comprar y vender por pequeños movimientos de precio
+
 # Índice con el que compararte
 referencia: SPY
 

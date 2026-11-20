@@ -46,11 +46,10 @@ def _datos_panel(cfg):
             "valor": round(p["acciones"] * p["ultimo_precio"], 2),
             "rent": round((p["ultimo_precio"] / p["precio_compra"] - 1) * 100, 2),
         } for t, p in c["posiciones"].items()), key=lambda x: -x["valor"])
-        proxima = None
-        if e["ultimo_rebalanceo"]:
-            proxima = str((pd.Timestamp(e["ultimo_rebalanceo"])
-                           + pd.DateOffset(months=e["reglas"]["frecuencia_meses"])).date())
+        siguiente = sim.proxima_revision(e)
+        proxima = str(siguiente.date()) if siguiente is not None else None
         carteras.append({
+            "diaria": sim.es_diaria(e),
             "nombre": nombre, "capital_inicial": e["capital_inicial"], "fecha_inicio": e["fecha_inicio"],
             "valor": ultimo["cartera"], "valor_ref": ultimo["referencia"], "efectivo": round(c["efectivo"], 2),
             "posiciones": posiciones, "proxima_revision": proxima,
@@ -318,7 +317,9 @@ function vistaCartera() {
   h += grafico(c.historial);
 
   h += `<h2>Lo que tienes</h2>`;
-  h += c.proxima_revision ? `<p class="nota">La próxima revisión de la cartera será el ${fecha(c.proxima_revision, true)}.</p>` : "";
+  h += c.diaria
+    ? `<p class="nota">Esta cartera se revisa cada día de mercado: compra lo que entra entre las mejores y vende lo que cae del ranking.</p>`
+    : c.proxima_revision ? `<p class="nota">La próxima revisión de la cartera será el ${fecha(c.proxima_revision, true)}.</p>` : "";
   h += `<ul class="lista">` + c.posiciones.map(p => `<li>
       <div><span class="tk">${esc(p.ticker)}</span><div class="sub">${esc(p.nombre) || "&nbsp;"}<br>${nf0.format(p.acciones)} acciones desde el ${fecha(p.fecha_compra)}</div></div>
       <div class="der">${dinero(p.valor)}<div class="sub ${clase(p.rent)}">${pct(p.rent)}</div></div></li>`).join("") +

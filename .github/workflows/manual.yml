@@ -13,6 +13,13 @@ on:
       nombre:
         description: "Nombre de la cartera (solo para crearla)"
         default: "principal"
+      estilo:
+        description: "Estilo de la cartera (solo para crearla): trimestral = reglas de Greenblatt, diaria = compra y vende cada día"
+        type: choice
+        default: trimestral
+        options:
+          - trimestral
+          - diaria
       capital:
         description: "Capital ficticio en dólares"
         default: "10000"
@@ -55,11 +62,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ACCION: ${{ inputs.accion }}
           NOMBRE: ${{ inputs.nombre }}
+          ESTILO: ${{ inputs.estilo }}
           CAPITAL: ${{ inputs.capital }}
           INICIO: ${{ inputs.inicio }}
         run: |
           case "$ACCION" in
-            "Crear cartera ficticia") python main.py crear --nombre "$NOMBRE" --capital "$CAPITAL" ;;
+            "Crear cartera ficticia") python main.py crear --nombre "$NOMBRE" --capital "$CAPITAL" --estilo "${ESTILO:-trimestral}" ;;
             "Simular el pasado")
               if [ -n "$INICIO" ]; then python main.py pasado --capital "$CAPITAL" --inicio "$INICIO"
               else python main.py pasado --capital "$CAPITAL"; fi ;;

@@ -138,6 +138,40 @@ sim.crear_cartera("principal", 10_000, cfg)
 estado, ops_hoy = sim.actualizar_cartera("principal", cfg)
 assert len(ops_hoy) == cfg["cartera"]["compras_por_tanda"]
 assert sim.actualizar_cartera("principal", cfg)[1] == [], "El mismo día no debe volver a operar"
+assert "estilo" not in sim.cargar("principal")["reglas"], "La cartera trimestral no cambia de reglas"
+
+# --- 6. Cartera diaria
+from inversor.cartera import Cartera  # noqa: E402
+
+reglas_d = sim.reglas_para(cfg, "diaria")
+assert reglas_d["estilo"] == "diaria" and reglas_d["num_posiciones"] == cfg["cartera"]["num_posiciones"]
+lista = [f"X{i:02d}" for i in range(80)]
+px = {t: 50.0 for t in lista}
+c = Cartera(10_000, reglas_d)
+ops_d = c._rebalancear_diario(pd.Timestamp("2026-01-05"), lista, px)
+assert set(c.posiciones) == set(lista[:20]) and all(o["tipo"] == "COMPRA" for o in ops_d), "Llena el top 20 el primer día"
+# Al día siguiente X03 baja al puesto 30 (se queda: dentro del top 50), X05 al 60 (se vende) y X07 deja de ser apta
+nueva = [t for t in lista if t not in ("X03", "X05", "X07")]
+nueva.insert(29, "X03")
+nueva.insert(59, "X05")
+ops_d = c._rebalancear_diario(pd.Timestamp("2026-01-06"), nueva, px)
+vendidas = {o["ticker"] for o in ops_d if o["tipo"] == "VENTA"}
+compradas = [o["ticker"] for o in ops_d if o["tipo"] == "COMPRA"]
+assert vendidas == {"X05", "X07"}, vendidas
+assert "X03" in c.posiciones and len(c.posiciones) == 20
+assert all(nueva.index(t) < 20 for t in compradas) and len(compradas) == 2, compradas
+assert c._rebalancear_diario(pd.Timestamp("2026-01-07"), [], px) == [] and len(c.posiciones) == 20, \
+    "Sin ranking (fallo de datos) no debe vender nada"
+assert c.efectivo >= -1e-6
+
+sim.crear_cartera("diaria", 10_000, cfg, "diaria")
+estado_d, ops_d = sim.actualizar_cartera("diaria", cfg)
+assert 0 < len(ops_d) <= 20 and sim.actualizar_cartera("diaria", cfg)[1] == []
+e = sim.cargar("diaria")
+assert sim.proxima_revision(e) is None and not sim.toca_rebalancear(e)
+assert sim.toca_rebalancear(e, pd.Timestamp(e["ultimo_rebalanceo"]) + pd.Timedelta(days=1)), "Al día siguiente vuelve a revisar"
+assert "cada día de mercado" in sim.describir_cartera(e)
+print(f"[OK] Cartera diaria: compra el top 20, vende fuera del top 50 y revisa cada día ({len(ops_d)} compras)")
 # Simula unas semanas de historial para el gráfico del panel
 e = sim.cargar("principal")
 base = pd.Timestamp(e["fecha_inicio"])

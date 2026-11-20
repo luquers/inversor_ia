@@ -76,6 +76,51 @@ class Cartera:
 
     # ------------------------------------------------------------ la regla
     def rebalancear(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
+        if self.reglas.get("estilo") == "diaria":
+            return self._rebalancear_diario(fecha, candidatos, precios)
+        return self._rebalancear_periodico(fecha, candidatos, precios)
+
+    def _rebalancear_diario(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
+        """
+        1. Vende lo que ha caído fuera de las `vender_fuera_del_top` mejores (o ya no pasa el F-Score).
+        2. Compra las que están entre las `num_posiciones` mejores y no tiene, si hay hueco.
+        """
+        r = self.reglas
+        fecha = pd.Timestamp(fecha)
+        self.actualizar_precios(precios)
+        if not candidatos:
+            # Sin ranking (fallo de datos) no se toca nada: vender todo sería un error
+            return []
+        nuevas_ops = []
+        top_n = r["num_posiciones"]
+        limite = max(r.get("vender_fuera_del_top", 50), top_n)
+        puesto = {t: i for i, t in enumerate(candidatos, 1)}
+
+        for t in list(self.posiciones):
+            p = puesto.get(t)
+            if p is None:
+                motivo = "Ya no pasa el filtro (F-Score o datos incompletos)"
+            elif p > limite:
+                motivo = f"Cae al puesto {p} del ranking (fuera de las {limite} mejores)"
+            else:
+                continue
+            nuevas_ops.append(self.vender(t, self._precio(t, precios), fecha, motivo))
+
+        por_comprar = min(top_n - len(self.posiciones), r["compras_por_tanda"])
+        if por_comprar > 0:
+            objetivo = self.valor(precios) / top_n
+            for p, t in enumerate(candidatos[:top_n], 1):
+                if por_comprar == 0 or self.efectivo <= 0:
+                    break
+                if t in self.posiciones or not _precio_valido(precios.get(t)):
+                    continue
+                op = self.comprar(t, objetivo, float(precios[t]), fecha, f"Entra en el puesto {p} del ranking")
+                if op:
+                    nuevas_ops.append(op)
+                    por_comprar -= 1
+        return nuevas_ops
+
+    def _rebalancear_periodico(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
         """
         1. Vende lo que ya ha cumplido su periodo (salvo que siga entre las mejores y la
            regla de renovar esté activa; en ese caso se queda otro periodo).
