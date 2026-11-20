@@ -38,6 +38,8 @@ jobs:
           SEC_CONTACTO: ${{ secrets.SEC_CONTACTO }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BOT_URL: ${{ secrets.BOT_URL }}
+          BOT_SECRET: ${{ secrets.BOT_SECRET }}
         run: python main.py diario
 
       - name: Guardar los cambios

@@ -1,0 +1,17 @@
+name = "inversor-bot"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# Datos que publica GitHub Pages en cada ejecución
+DATOS_URL = "https://luquers.github.io/inversor_ia/bot.json"
+
+# Quién tiene acceso al bot (lo rellena el paso de instalación)
+[[kv_namespaces]]
+binding = "USUARIOS"
+id = "PENDIENTE"
+
+# Secretos (no van aquí; se guardan con `npx wrangler secret put`):
+#   TELEGRAM_TOKEN  token de @BotFather
+#   BOT_SECRET      clave compartida con GitHub Actions y con el webhook de Telegram
+#   ADMIN_CHAT_ID   tu número de chat de Telegram (quien aprueba a los demás)

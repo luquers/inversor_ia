@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 
 import pandas as pd
 import requests
@@ -79,24 +80,30 @@ def avisos_vigilancia(ranking: pd.DataFrame, cfg: dict, vigiladas) -> list[str]:
     return avisos
 
 
+def cambios_top(ranking: pd.DataFrame, n: int):
+    """Qué empresas entran y salen del top n respecto al último informe (y guarda el actual)."""
+    HISTORICO.mkdir(exist_ok=True)
+    ruta_previo = HISTORICO / "ultimo_ranking.csv"
+    top_actual = ranking[ranking["apto"]].head(n).index.tolist()
+    entran, salen = [], []
+    if ruta_previo.exists():
+        previo = pd.read_csv(ruta_previo, index_col=0)
+        top_previo = previo[previo["apto"]].head(n).index.tolist()
+        entran = [t for t in top_actual if t not in top_previo]
+        salen = [t for t in top_previo if t not in top_actual]
+    ranking.to_csv(ruta_previo)
+    return entran, salen
+
+
 def informe_semanal(ranking: pd.DataFrame, cfg: dict, vigiladas: list[str]) -> str:
     n = cfg["alertas"]["top_informe"]
     partes = [f"📊 Informe semanal – Fórmula Mágica + F-Score (mínimo {cfg['fscore_minimo']})",
               "R.Benef = rendimiento de beneficios (cuánto de barata); R.Capital = rentabilidad del negocio",
               "", tabla_texto(ranking, n)]
 
-    # Novedades respecto al informe anterior
-    HISTORICO.mkdir(exist_ok=True)
-    ruta_previo = HISTORICO / "ultimo_ranking.csv"
-    top_actual = ranking[ranking["apto"]].head(n).index.tolist()
-    if ruta_previo.exists():
-        previo = pd.read_csv(ruta_previo, index_col=0)
-        top_previo = previo[previo["apto"]].head(n).index.tolist()
-        entran = [t for t in top_actual if t not in top_previo]
-        salen = [t for t in top_previo if t not in top_actual]
-        if entran or salen:
-            partes += ["", f"🆕 Entran en el top: {', '.join(entran) or '—'}", f"↩️ Salen del top: {', '.join(salen) or '—'}"]
-    ranking.to_csv(ruta_previo)
+    entran, salen = cambios_top(ranking, n)
+    if entran or salen:
+        partes += ["", f"🆕 Entran en el top: {', '.join(entran) or '—'}", f"↩️ Salen del top: {', '.join(salen) or '—'}"]
 
     avisos = avisos_vigilancia(ranking, cfg, vigiladas)
     if avisos:
@@ -140,15 +147,44 @@ def grafico(curva: pd.DataFrame, ruta, titulo: str, nombre_ref: str):
 
 
 # ---------------------------------------------------------------- alertas
+def _trozos(texto: str, limite=3900):
+    """Parte un mensaje largo por líneas (sin romper etiquetas HTML) para respetar el límite de Telegram."""
+    trozos, actual = [], ""
+    for linea in texto.split("\n"):
+        if actual and len(actual) + len(linea) + 1 > limite:
+            trozos.append(actual)
+            actual = ""
+        actual = f"{actual}\n{linea}" if actual else linea
+    return trozos + ([actual] if actual else [])
+
+
 def enviar_alerta(mensaje: str):
-    """Muestra el mensaje y, si hay bot de Telegram configurado, lo envía al móvil."""
-    print(mensaje)
+    """Muestra el mensaje y lo envía por Telegram (formato HTML).
+
+    Si está configurado el bot de Cloudflare (BOT_URL y BOT_SECRET), se le pasa a él, que lo
+    reparte entre todas las personas autorizadas con sus botones. Si no, se envía directamente
+    a TELEGRAM_CHAT_ID."""
+    print(re.sub(r"<[^>]+>", "", mensaje))
+    url, clave = os.environ.get("BOT_URL"), os.environ.get("BOT_SECRET")
+    if url and clave:
+        try:
+            r = requests.post(url.rstrip("/") + "/notificar", json={"texto": mensaje},
+                              headers={"Authorization": f"Bearer {clave}"}, timeout=30)
+            if r.ok:
+                return
+            print(f"El bot respondió con un error ({r.status_code}): {r.text[:200]}. Se envía directamente.")
+        except Exception as e:
+            print(f"No se pudo contactar con el bot ({e}). Se envía directamente.")
+
     token, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not (token and chat):
         return
-    for i in range(0, len(mensaje), 3900):   # Telegram admite ~4000 caracteres por mensaje
+    for trozo in _trozos(mensaje):
         try:
-            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          data={"chat_id": chat, "text": mensaje[i:i + 3900]}, timeout=20)
+            r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                              data={"chat_id": chat, "text": trozo, "parse_mode": "HTML",
+                                    "disable_web_page_preview": "true"}, timeout=20)
+            if not r.ok:
+                print(f"Telegram rechazó el mensaje ({r.status_code}): {r.text[:200]}")
         except Exception as e:
             print(f"No se pudo enviar a Telegram: {e}")

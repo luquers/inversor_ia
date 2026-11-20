@@ -12,7 +12,7 @@ import yaml
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from inversor import analisis, simulacion as sim, web  # noqa: E402
+from inversor import analisis, mensajes, simulacion as sim, web  # noqa: E402
 from inversor.puntuacion import elegibles, evaluar, metricas_empresa, ordenar  # noqa: E402
 from inversor.sec import HistorialAcciones, compactar, tabla_anual, vista  # noqa: E402
 
@@ -270,5 +270,74 @@ ruta = web.generar_panel(cfg)
 html = ruta.read_text(encoding="utf-8")
 assert "__DATOS__" not in html and '"carteras"' in html and '"filas"' in html
 print(f"[OK] Panel generado en {ruta}")
+
+# --- 8. Mensajes de Telegram y datos del bot
+import json as _json  # noqa: E402
+import re as _re  # noqa: E402
+
+
+def html_telegram_valido(texto):
+    sin = _re.sub(r"</?(b|i)>", "", texto)
+    assert "<" not in sin and ">" not in sin, texto[:300]
+    assert not _re.search(r"&(?!amp;|lt;|gt;|quot;|#x27;)", sin), "Hay un & sin escapar"
+    for t in ("b", "i"):
+        assert texto.count(f"<{t}>") == texto.count(f"</{t}>")
+
+
+estado_d = sim.cargar("diaria")
+ops_guardadas = estado_d["cartera"]["operaciones"]
+assert all(o.get("explicacion") for o in ops_guardadas), "Cada operación guarda su porqué"
+assert all(o["explicacion"].startswith(f"Es la n.º {o['motivo'].split()[-3]} del ranking") for o in ops_guardadas)
+ranking_h = ranking.copy()
+ranking_h.loc[ranking_h.index[0], "nombre"] = "H&R <Block>"   # caracteres que hay que escapar
+info = mensajes.info_empresas(ranking_h, extra=["T05"])
+assert info[aptas[0]]["puesto"] == 1 and info["T05"]["puesto"] is None
+venta = {"tipo": "VENTA", "ticker": aptas[0], "motivo": "Cae al puesto 64 del ranking (fuera de las 50 mejores)",
+         "resultado_pct": -2.5}
+assert "puesto 64" in mensajes.razon_operacion(venta, info[aptas[0]]) and "Pierde un 2,5 %" in mensajes.razon_operacion(venta, None)
+nov = mensajes.mensaje_novedades([(estado_d, ops_guardadas[:2] + [venta])], info, cfg)
+html_telegram_valido(nov)
+assert "H&amp;R &lt;Block&gt;" in nov and "🔴" in nov and "Ahora la cartera vale" in nov
+estados = [sim.cargar(n) for n in sim.listar_carteras()]
+sem = mensajes.mensaje_semanal(estados, ranking_h, cfg, ([aptas[0]], ["T05"]), ["T05: aviso de prueba"])
+html_telegram_valido(sem)
+assert all(mensajes.titulo_cartera(e) in sem.replace("&amp;", "&") for e in estados) and "⚠️" in sem
+assert mensajes.titulo_cartera(sim.cargar("principal")) == "Principal (trimestral)"
+assert mensajes.pct(-0.01) == "0,0 %" and mensajes.pct(1234.56) == "+1.234,6 %"
+
+bot = _json.loads((tmp / "docs" / "bot.json").read_text(encoding="utf-8"))
+assert {c["nombre"] for c in bot["carteras"]} == {"principal", "diaria", "semanal"}
+assert bot["top"][0]["puesto"] == 1 and bot["top"][0]["porque"]
+c0 = next(c for c in bot["carteras"] if c["nombre"] == "diaria")
+assert c0["posiciones"][0]["porque"] and "Se vendería si baja del puesto 50" in c0["posiciones"][0]["nota"]
+assert c0["operaciones"][0]["explicacion"]
+p0 = next(c for c in bot["carteras"] if c["nombre"] == "principal")["posiciones"][0]
+assert "Se mantiene al menos hasta" in p0["nota"]
+
+# Envío: primero al bot de Cloudflare; si falla, directo a Telegram (y se registra si Telegram lo rechaza)
+import os as _os  # noqa: E402
+
+
+class _Resp:
+    def __init__(self, ok, codigo=200, texto=""):
+        self.ok, self.status_code, self.text = ok, codigo, texto
+
+
+enviados = []
+analisis.requests.post = lambda url, **kw: enviados.append((url, kw)) or _Resp(True)
+_os.environ.update({"BOT_URL": "https://bot.test/", "BOT_SECRET": "clave", "TELEGRAM_TOKEN": "T", "TELEGRAM_CHAT_ID": "1"})
+analisis.enviar_alerta(nov)
+assert len(enviados) == 1 and enviados[0][0] == "https://bot.test/notificar"
+assert enviados[0][1]["headers"]["Authorization"] == "Bearer clave" and enviados[0][1]["json"]["texto"] == nov
+enviados.clear()
+analisis.requests.post = lambda url, **kw: enviados.append((url, kw)) or _Resp("notificar" not in url, 500, "caído")
+analisis.enviar_alerta("\n".join(["línea <b>larga</b>"] * 400))
+directos = [e for e in enviados if "api.telegram.org" in e[0]]
+assert len(directos) >= 2 and all(e[1]["data"]["parse_mode"] == "HTML" for e in directos), "Si el bot falla, va directo"
+assert all(len(e[1]["data"]["text"]) <= 3900 for e in directos)
+assert all(e[1]["data"]["text"].count("<b>") == e[1]["data"]["text"].count("</b>") for e in directos)
+for k in ("BOT_URL", "BOT_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"):
+    _os.environ.pop(k)
+print("[OK] Mensajes de Telegram claros y válidos, datos del bot y envío con respaldo")
 print("\nTODAS LAS PRUEBAS PASAN ✅")
 print(f"CARPETA_PANEL={ruta.parent}")

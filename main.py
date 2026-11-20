@@ -17,7 +17,9 @@ import sys
 import pandas as pd
 import yaml
 
-from inversor.analisis import enviar_alerta, guardar_ranking, informe_semanal, ranking_actual, tabla_texto
+from inversor.analisis import (avisos_vigilancia, cambios_top, enviar_alerta, guardar_ranking,
+                               ranking_actual, tabla_texto)
+from inversor import mensajes
 from inversor.datos import RAIZ
 from inversor import simulacion as sim
 from inversor.web import generar_panel
@@ -93,17 +95,25 @@ def cmd_diario(cfg, args):
     necesita_ranking = hay_informe or any(sim.toca_rebalancear(sim.cargar(n)) for n in carteras)
     ranking = ranking_actual(cfg) if necesita_ranking else None
 
-    mensajes, vigiladas = [], list(cfg["alertas"].get("mis_acciones") or [])
+    resultados, vigiladas = [], list(cfg["alertas"].get("mis_acciones") or [])
     for nombre in carteras:
         estado, ops = sim.actualizar_cartera(nombre, cfg, ranking)
+        resultados.append((estado, ops))
         vigiladas += list(estado["cartera"]["posiciones"])
-        if ops or hay_informe:
-            mensajes.append(sim.describir_cartera(estado, ops))
+        print(sim.describir_cartera(estado, ops) + "\n")
+
+    avisar = []
     if hay_informe:
-        mensajes.insert(0, informe_semanal(ranking, cfg, vigiladas))
-    if mensajes:
-        enviar_alerta("\n\n".join(mensajes))
-    else:
+        cambios = cambios_top(ranking, cfg["alertas"]["top_informe"])
+        avisos = avisos_vigilancia(ranking, cfg, vigiladas)
+        avisar.append(mensajes.mensaje_semanal([e for e, _ in resultados], ranking, cfg, cambios, avisos))
+    con_movimientos = [(e, ops) for e, ops in resultados if ops]
+    if con_movimientos:
+        info = mensajes.info_empresas(ranking, extra=vigiladas)
+        avisar.append(mensajes.mensaje_novedades(con_movimientos, info, cfg))
+    for texto in avisar:
+        enviar_alerta(texto)
+    if not avisar:
         print("Hoy no hay novedades.")
     actualizar_panel(cfg)
 

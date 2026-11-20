@@ -2,3 +2,6 @@ cache/
 resultados/
 __pycache__/
 *.pyc
+bot/.wrangler/
+node_modules/
+.dev.vars

@@ -6,6 +6,7 @@ import json
 import pandas as pd
 
 from .analisis import HISTORICO, RESULTADOS, grafico, metricas_serie, preparar_empresas, ranking_actual
+from . import mensajes
 from .cartera import Cartera
 from .datos import RAIZ, descargar_precios
 from .puntuacion import elegibles, evaluar, ordenar
@@ -115,6 +116,10 @@ def actualizar_cartera(nombre, cfg, ranking=None):
     if rebalanceo:
         operaciones = cartera.rebalancear(hoy, candidatos, precios)
         estado["ultimo_rebalanceo"] = str(hoy.date())
+        # Se guarda el porqué de cada operación con los datos de hoy, para el bot y el panel
+        info = mensajes.info_empresas(ranking, extra=[op["ticker"] for op in operaciones])
+        for op in operaciones:
+            op["explicacion"] = mensajes.razon_operacion(op, info.get(op["ticker"]), estado["fscore_minimo"])
 
     if estado["precio_referencia_inicio"] is None:
         estado["precio_referencia_inicio"] = precios.get(ref)

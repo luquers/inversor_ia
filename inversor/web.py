@@ -7,6 +7,7 @@ import pandas as pd
 
 from .analisis import HISTORICO, avisos_vigilancia
 from .datos import RAIZ
+from . import mensajes
 from . import simulacion as sim
 
 DOCS = RAIZ / "docs"
@@ -80,6 +81,53 @@ def _datos_panel(cfg):
     }
 
 
+def datos_bot(cfg):
+    """Lo que necesita el bot de Telegram (docs/bot.json), con las explicaciones ya redactadas."""
+    ranking, fecha_ranking = _ranking_guardado()
+    fmin = cfg["fscore_minimo"]
+    estados = [sim.cargar(n) for n in sim.listar_carteras()]
+    tenidas = [t for e in estados for t in e["cartera"]["posiciones"]]
+    info = mensajes.info_empresas(ranking, extra=tenidas, top=30)
+    ref = mensajes.nombre_referencia(cfg)
+
+    carteras = []
+    for e in estados:
+        c = e["cartera"]
+        valor, valor_ref = mensajes._valor_actual(e)
+        siguiente = sim.proxima_revision(e)
+        carteras.append({
+            "nombre": e["nombre"], "titulo": mensajes.titulo_cartera(e), "estilo": mensajes.estilo(e),
+            "como_funciona": mensajes.ESTILOS[mensajes.estilo(e)][1],
+            "capital_inicial": e["capital_inicial"], "fecha_inicio": e["fecha_inicio"],
+            "valor": round(valor, 2), "valor_ref": round(valor_ref, 2), "efectivo": round(c["efectivo"], 2),
+            "proxima_revision": str(siguiente.date()) if siguiente is not None else None,
+            "posiciones": sorted(({
+                "ticker": t, "nombre": (info.get(t) or {}).get("nombre", ""), "acciones": p["acciones"],
+                "fecha_compra": p["fecha_compra"], "valor": round(p["acciones"] * p["ultimo_precio"], 2),
+                "rent": round((p["ultimo_precio"] / p["precio_compra"] - 1) * 100, 2),
+                "porque": mensajes.explicar_empresa(info.get(t), fmin),
+                "nota": mensajes.nota_posicion(p, e, info.get(t)),
+            } for t, p in c["posiciones"].items()), key=lambda x: -x["valor"]),
+            "operaciones": [{
+                "fecha": o["fecha"], "tipo": o["tipo"], "ticker": o["ticker"],
+                "nombre": (info.get(o["ticker"]) or {}).get("nombre", ""),
+                "explicacion": o.get("explicacion") or mensajes.razon_operacion(o, info.get(o["ticker"]), fmin),
+            } for o in reversed(c["operaciones"][-10:])],
+        })
+
+    top = []
+    for t, emp in sorted(((t, x) for t, x in info.items() if x["puesto"]), key=lambda tx: tx[1]["puesto"])[:20]:
+        top.append({"ticker": t, "nombre": emp["nombre"], "puesto": emp["puesto"],
+                    "porque": mensajes.explicar_empresa(emp, fmin)})
+    return {
+        "actualizado": pd.Timestamp.now().strftime("%Y-%m-%dT%H:%M"),
+        "fecha_ranking": fecha_ranking, "referencia": cfg["referencia"], "nombre_referencia": ref,
+        "fscore_minimo": fmin, "panel": (cfg.get("web") or {}).get("url_panel") or "",
+        "carteras": carteras, "top": top,
+        "avisos": avisos_vigilancia(ranking, cfg, tenidas) if ranking is not None else [],
+    }
+
+
 def _iconos():
     from PIL import Image, ImageDraw
 
@@ -101,6 +149,7 @@ def generar_panel(cfg):
     DOCS.mkdir(exist_ok=True)
     datos = json.dumps(_datos_panel(cfg), ensure_ascii=False).replace("</", "<\\/")
     (DOCS / "index.html").write_text(PLANTILLA.replace("__DATOS__", datos), encoding="utf-8")
+    (DOCS / "bot.json").write_text(json.dumps(datos_bot(cfg), ensure_ascii=False), encoding="utf-8")
     (DOCS / "manifest.json").write_text(json.dumps({
         "name": "Mi inversor", "short_name": "Inversor", "lang": "es", "start_url": "./", "scope": "./",
         "display": "standalone", "background_color": "#F3F5F7", "theme_color": "#172238",

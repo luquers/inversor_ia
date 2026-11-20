@@ -84,7 +84,31 @@ También puedes lanzar las acciones manuales desde el móvil con la app de GitHu
 2. Escribe cualquier mensaje a tu nuevo bot. Después abre `https://api.telegram.org/bot<TU_TOKEN>/getUpdates` en el navegador y busca el número que aparece en `"chat":{"id": ...}`.
 3. Guarda ambos como secretos (paso 2).
 
-**Qué te avisa:** cada lunes, un informe con las mejores empresas, cuáles entran y salen del top y alertas si alguna acción que tienes baja del F-Score mínimo. Además, cualquier día en que tu cartera ficticia compre o venda. Si tienes acciones de verdad, ponlas en `mis_acciones` dentro de `config.yaml` y también las vigilará.
+**Qué te avisa:** cada lunes, un resumen de cómo van las carteras, las mejores empresas explicadas en lenguaje sencillo, cuáles entran y salen del top y alertas si alguna acción que tienes baja del F-Score mínimo. Además, cualquier día en que una cartera ficticia compre o venda, con el porqué de cada operación. Si tienes acciones de verdad, ponlas en `mis_acciones` dentro de `config.yaml` y también las vigilará.
+
+### Bot interactivo con botones (opcional)
+
+Con lo anterior, el bot solo envía avisos. La carpeta `bot/` contiene un bot completo que se instala gratis en **Cloudflare Workers**. Ofrece:
+
+- **Bienvenida** con la explicación del método y sus límites.
+- **Menús con botones**: ver cada cartera o todas a la vez, el porqué de cada empresa, los últimos movimientos, las mejores empresas del ranking, cómo funciona y un glosario.
+- **Acceso privado**: cuando alguien escribe al bot, te llega un aviso para aprobarlo o rechazarlo. Puedes quitar el acceso cuando quieras desde *Personas con acceso*.
+- **Avisos para todas las personas aprobadas.** Cada una puede activarlos o desactivarlos.
+
+El bot lee las carteras de `docs/bot.json`, que se publica en cada ejecución. Para instalarlo, con [Node.js](https://nodejs.org) y una cuenta gratuita de Cloudflare, desde la carpeta `bot/`:
+
+1. `npx wrangler@4 login`
+2. `npx wrangler@4 kv namespace create USUARIOS` y copia el `id` que te da en `wrangler.toml`.
+3. `npx wrangler@4 deploy`. Apunta la dirección `https://inversor-bot.<algo>.workers.dev`.
+4. Guarda los secretos del Worker:
+   - Copia el token del bot y ejecuta `pbpaste | npx wrangler@4 secret put TELEGRAM_TOKEN` (en Mac).
+   - `printf TU_CHAT_ID | npx wrangler@4 secret put ADMIN_CHAT_ID`
+   - Crea una clave compartida y guárdala en los dos sitios:
+     `S=$(openssl rand -hex 32); printf %s "$S" | npx wrangler@4 secret put BOT_SECRET && gh secret set BOT_SECRET --body "$S"`
+5. En GitHub, crea el secreto `BOT_URL` con la dirección del paso 3.
+6. Abre `https://inversor-bot.<algo>.workers.dev/configurar` para conectar el bot con Telegram.
+
+Para comprobar el bot sin internet: `node bot/prueba_bot.mjs`.
 
 ## Varias carteras para comparar
 
