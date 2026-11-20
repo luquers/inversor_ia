@@ -9,7 +9,7 @@ DATOS_URL = "https://luquers.github.io/inversor_ia/bot.json"
 # Quién tiene acceso al bot (lo rellena el paso de instalación)
 [[kv_namespaces]]
 binding = "USUARIOS"
-id = "PENDIENTE"
+id = "af219fcdae8840dfbef099810fed87f6"
 
 # Secretos (no van aquí; se guardan con `npx wrangler secret put`):
 #   TELEGRAM_TOKEN  token de @BotFather
