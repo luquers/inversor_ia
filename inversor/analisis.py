@@ -68,7 +68,11 @@ def avisos_vigilancia(ranking: pd.DataFrame, cfg: dict, vigiladas) -> list[str]:
             continue
         f = ranking.loc[t]
         puesto = f"puesto {int(f['puesto'])}" if not pd.isna(f["puesto"]) else "fuera del ranking"
-        if pd.isna(f["fscore"]) or f["fscore_evaluables"] < 7:
+        al_dia = f.get("cuentas_al_dia", True)
+        if not pd.isna(al_dia) and not bool(al_dia):
+            avisos.append(f"{t}: sus últimas cuentas son del ejercicio {f['cierre_ejercicio']}; "
+                          "se deja fuera del ranking hasta que haya datos recientes")
+        elif pd.isna(f["fscore"]) or f["fscore_evaluables"] < 7:
             avisos.append(f"{t}: no hay datos suficientes para calcular su F-Score ({puesto})")
         elif f["fscore"] < cfg["fscore_minimo"]:
             avisos.append(f"{t}: su F-Score ha bajado a {int(f['fscore'])}/9, por debajo de tu mínimo ({puesto})")

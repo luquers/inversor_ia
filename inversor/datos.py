@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from .sec import compactar
+from .sec import VERSION_COMPACTO, compactar
 
 RAIZ = Path(__file__).resolve().parent.parent
 CACHE = RAIZ / "cache"
@@ -127,7 +127,10 @@ def datos_sec(ticker, cik, cfg):
     if ruta.exists() and _edad_dias(ruta) < cfg["datos"]["cache_dias"]:
         try:
             with open(ruta, "rb") as f:
-                return pickle.load(f)
+                guardado = pickle.load(f)
+            # Las cuentas leídas con una versión anterior del programa se vuelven a descargar
+            if guardado is None or guardado.get("version") == VERSION_COMPACTO:
+                return guardado
         except Exception:
             pass
     r = _pedir(URL_HECHOS_SEC.format(cik=cik), _cabeceras_sec(cfg))

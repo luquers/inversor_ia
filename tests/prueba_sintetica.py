@@ -13,7 +13,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 from inversor import analisis, simulacion as sim, web  # noqa: E402
-from inversor.puntuacion import elegibles, evaluar, ordenar  # noqa: E402
+from inversor.puntuacion import elegibles, evaluar, metricas_empresa, ordenar  # noqa: E402
 from inversor.sec import HistorialAcciones, compactar, tabla_anual, vista  # noqa: E402
 
 rng = np.random.default_rng(7)
@@ -101,11 +101,75 @@ print("[OK] Tamaño de empresa correcto antes y después de un split")
 # --- 3. Ranking de hoy
 precios_hoy = {t: 20 + 30 * rng.uniform() for t in tickers}
 caps = {t: acciones[t].capitalizacion(precios_hoy[t], splits_t07 if t == "T07" else None) for t in tickers}
-ranking = ordenar(evaluar(universo, tablas, caps), cfg["capitalizacion_minima"])
+ranking = ordenar(evaluar(universo, tablas, caps, pd.Timestamp("2026-11-06")), cfg["capitalizacion_minima"])
 aptas = elegibles(ranking, cfg["fscore_minimo"])
 ranking["apto"] = ranking.index.isin(aptas)
 assert ranking["base_ok"].sum() >= 45 and "T05" not in aptas
 print(f"[OK] Ranking: {int(ranking['base_ok'].sum())} puntuadas, {len(aptas)} aptas. Top 5: {aptas[:5]}")
+
+# --- 3b. Casos reales que antes se leían mal
+def cuentas(anios, periodo, balance):
+    """Companyfacts mínimo: `periodo` y `balance` son {concepto: valor} repetidos cada año."""
+    gaap = {}
+    for anio in anios:
+        filed = f"{anio + 1}-02-15"
+        for c, v in periodo.items():
+            gaap.setdefault(c, {"units": {"USD": []}})["units"]["USD"].append(
+                hecho(f"{anio}-12-31", v, filed, inicio=f"{anio}-01-01"))
+        for c, v in balance.items():
+            gaap.setdefault(c, {"units": {"USD": []}})["units"]["USD"].append(hecho(f"{anio}-12-31", v, filed))
+    return {"entityName": "Caso", "facts": {"us-gaap": gaap}}
+
+base_periodo = {"Revenues": 5e9, "NetIncomeLoss": 4e8, "NetCashProvidedByUsedInOperatingActivities": 5e8}
+# Constructora: balance sin corriente/no corriente, beneficio "Domestic" y deuda solo como NotesPayable
+constructora = cuentas(range(2022, 2026), {**base_periodo, "IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic": 5e8},
+                       {"Assets": 7e9, "InventoryRealEstate": 5e9, "AccountsReceivableNet": 2e8, "AccountsPayableCurrent": 4e8,
+                        "PropertyPlantAndEquipmentNet": 1e8, "NotesPayable": 1.7e9, "CashAndCashEquivalentsAtCarryingValue": 3e8})
+m = metricas_empresa(tabla_anual(compactar(constructora)), 3e9, pd.Timestamp("2026-06-01"))
+assert abs(m["ebit"] - 5e8) < 1, "Usa el beneficio antes de impuestos 'Domestic' si no hay otro"
+assert abs(m["rend_capital"] - 5e8 / (5e9 + 2e8 - 4e8 + 1e8)) < 1e-9, m["rend_capital"]
+assert abs(m["rend_beneficios"] - 5e8 / (3e9 + 1.7e9 - 3e8)) < 1e-9, "La deuda NotesPayable cuenta en el valor de empresa"
+# Sin balance clasificado ni existencias: la rentabilidad queda sin calcular (no se infla)
+sin_nada = cuentas(range(2022, 2026), {**base_periodo, "OperatingIncomeLoss": 5e8}, {"Assets": 7e9})
+assert pd.isna(metricas_empresa(tabla_anual(compactar(sin_nada)), 3e9, pd.Timestamp("2026-06-01"))["rend_capital"])
+
+# Petrolera: los yacimientos van aparte del resto del inmovilizado
+petrolera = cuentas(range(2022, 2026), {**base_periodo, "OperatingIncomeLoss": 3e9},
+                    {"Assets": 1.8e10, "AssetsCurrent": 2e9, "LiabilitiesCurrent": 2.5e9,
+                     "CashAndCashEquivalentsAtCarryingValue": 5e8,
+                     "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization": 1.5e8,
+                     "CapitalizedCostsOilAndGasProducingActivitiesNet": 1.25e10, "LongTermDebtNoncurrent": 4e9})
+m = metricas_empresa(tabla_anual(compactar(petrolera)), 1.5e10, pd.Timestamp("2026-06-01"))
+assert abs(m["rend_capital"] - 3e9 / (1.25e10 + 1.5e8)) < 1e-9, m["rend_capital"]
+# Si el inmovilizado ya incluye los yacimientos, no se suman dos veces
+incluido = cuentas(range(2022, 2026), {**base_periodo, "OperatingIncomeLoss": 3e9},
+                   {"Assets": 1.8e10, "AssetsCurrent": 2e9, "LiabilitiesCurrent": 2.5e9,
+                    "PropertyPlantAndEquipmentNet": 1.3e10, "CapitalizedCostsOilAndGasProducingActivitiesNet": 1.25e10})
+m = metricas_empresa(tabla_anual(compactar(incluido)), 1.5e10, pd.Timestamp("2026-06-01"))
+assert abs(m["rend_capital"] - 3e9 / 1.3e10) < 1e-9
+
+# Deuda publicada por partes (convertible + préstamo) y un año sin inmovilizado publicado
+partes = cuentas(range(2022, 2026), {**base_periodo, "OperatingIncomeLoss": 2e8},
+                 {"Assets": 2e9, "AssetsCurrent": 7e8, "LiabilitiesCurrent": 4e8, "CashAndCashEquivalentsAtCarryingValue": 4e8,
+                  "ConvertibleLongTermNotesPayable": 2.4e8, "LongTermLoansPayable": 5.4e8, "LoansPayableCurrent": 3e7})
+inmov = partes["facts"]["us-gaap"].setdefault("PropertyPlantAndEquipmentNet", {"units": {"USD": []}})["units"]["USD"]
+inmov += [hecho(f"{a}-12-31", 1.2e8, f"{a + 1}-02-15") for a in (2022, 2023, 2024)]   # falta 2025
+t_partes = tabla_anual(compactar(partes))
+m = metricas_empresa(t_partes, 8e8, pd.Timestamp("2026-06-01"))
+assert abs(m["rend_beneficios"] - 2e8 / (8e8 + 2.4e8 + 5.4e8 + 3e7 - 4e8)) < 1e-9, "Suma las partes de la deuda"
+assert abs(m["rend_capital"] - 2e8 / 1.2e8) < 1e-9, "Si falta el inmovilizado un año, usa el del año anterior"
+
+# Cuentas viejas: se quedan fuera del ranking
+assert metricas_empresa(t_partes, 8e8, pd.Timestamp("2026-06-01"))["cuentas_al_dia"]
+assert not metricas_empresa(t_partes, 8e8, pd.Timestamp("2027-09-01"))["cuentas_al_dia"]
+u2 = pd.DataFrame({"ticker": ["NUEVA", "VIEJA"], "nombre": ["", ""], "sector": "Industrials"})
+viejas = tabla_anual(compactar(cuentas(range(2014, 2019), {**base_periodo, "OperatingIncomeLoss": 2e8},
+                                       {"AssetsCurrent": 7e8, "LiabilitiesCurrent": 4e8, "PropertyPlantAndEquipmentNet": 1e8})))
+r2 = ordenar(evaluar(u2, {"NUEVA": t_partes, "VIEJA": viejas}, {"NUEVA": 8e8, "VIEJA": 8e8}, pd.Timestamp("2026-06-01")), 3e8)
+assert r2.loc["NUEVA", "base_ok"] and not r2.loc["VIEJA", "base_ok"], "Descarta cuentas de hace más de 18 meses"
+aviso = analisis.avisos_vigilancia(r2, cfg, ["VIEJA"])
+assert aviso and "2018" in aviso[0], aviso
+print("[OK] Constructoras, petroleras, deuda por partes, inmovilizado que falta y cuentas viejas")
 
 # --- 4. Simulación del pasado (2010-2026)
 dias = pd.bdate_range("2010-01-04", "2026-11-06")

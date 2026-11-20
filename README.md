@@ -127,7 +127,7 @@ Para comprobar la lógica sin internet: `python tests/prueba_sintetica.py`.
 ## Límites que debes conocer
 
 - **Sesgo de supervivencia.** La simulación del pasado usa las empresas que están **hoy** en el S&P 1500. Las que quebraron o salieron del índice no aparecen, y las que entraron porque les fue bien sí. Eso infla el resultado: tómalo como el escenario optimista. Corregirlo bien exige datos históricos de empresas que ya no cotizan, que no son gratuitos.
-- **Datos imperfectos.** Las empresas etiquetan sus cuentas de formas algo distintas. Algunas quedarán con datos incompletos y se omiten. Revisa siempre una empresa antes de comprarla de verdad.
+- **Datos imperfectos.** Las empresas etiquetan sus cuentas de formas algo distintas. Algunas quedarán con datos incompletos y se omiten. También se omiten las que tienen sus últimas cuentas anuales de hace más de 18 meses. Revisa siempre una empresa antes de comprarla de verdad.
 - **Dividendos.** En las carteras hacia delante no se suman (ni a la tuya ni al índice), así que la comparación es justa pero ambas salen algo más bajas que la realidad. En la simulación del pasado sí se incluyen.
 - **Paciencia.** La Fórmula Mágica ha tenido rachas de varios años peores que el índice. Solo funciona si la sigues también cuando va mal.
 - **Al invertir desde España:** asumes riesgo de cambio euro/dólar, conviene tener firmado el formulario W-8BEN con tu bróker (retención del 15 % en dividendos de EE. UU.) y cada venta con ganancia tributa en la renta.

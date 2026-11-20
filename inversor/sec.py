@@ -13,12 +13,17 @@ import pandas as pd
 
 FORMULARIOS_ANUALES = {"10-K", "10-K/A", "10-KT", "10-KT/A"}
 
+# Súbelo cuando cambien CONCEPTOS: obliga a volver a leer las cuentas guardadas en caché
+VERSION_COMPACTO = 2
+
 # Para cada dato, los nombres que usan las empresas (en orden de preferencia)
 CONCEPTOS = {
     # --- cuenta de resultados y flujos (periodos de un año)
     "ebit": ["OperatingIncomeLoss",
              "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
-             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"],
+             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+             # Algunas empresas solo con negocio en EE. UU. (p. ej. constructoras) usan esta
+             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic"],
     "ingresos": ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
                  "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet", "SalesRevenueGoodsNet"],
     "beneficio_bruto": ["GrossProfit"],
@@ -32,8 +37,14 @@ CONCEPTOS = {
     "activo_corriente": ["AssetsCurrent"],
     "pasivo_corriente": ["LiabilitiesCurrent"],
     "deuda_lp": ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermDebt"],
+    # Partes de la deuda que algunas empresas publican por separado en lugar del total anterior.
+    # Solo se suman si falta deuda_lp, para no contar dos veces lo mismo.
+    "deuda_convertible": ["ConvertibleLongTermNotesPayable", "ConvertibleNotesPayable"],
+    "prestamos_lp": ["LongTermLoansPayable", "SeniorLongTermNotes", "SeniorNotes"],
+    "pagares": ["NotesAndLoansPayable", "NotesPayable"],   # típico de constructoras: el total sin dividir
     "deuda_cp_total": ["DebtCurrent"],
-    "deuda_lp_corriente": ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent"],
+    "deuda_lp_corriente": ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent",
+                           "LoansPayableCurrent", "ConvertibleNotesPayableCurrent"],
     "prestamos_cp": ["ShortTermBorrowings", "CommercialPaper"],
     "efectivo": ["CashAndCashEquivalentsAtCarryingValue",
                  "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "Cash"],
@@ -41,6 +52,15 @@ CONCEPTOS = {
                        "AvailableForSaleSecuritiesDebtSecuritiesCurrent"],
     "inmovilizado_neto": ["PropertyPlantAndEquipmentNet",
                           "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization"],
+    # Petroleras: los pozos y yacimientos se publican aparte del resto del inmovilizado
+    "inmovilizado_petroleo": ["CapitalizedCostsOilAndGasProducingActivitiesNet",
+                              "OilAndGasPropertySuccessfulEffortMethodNet", "OilAndGasPropertyFullCostMethodNet"],
+    # Para estimar el circulante cuando el balance no separa corriente y no corriente (constructoras)
+    "existencias": ["InventoryNet", "InventoryRealEstate", "InventoryOperativeBuilders"],
+    "clientes": ["AccountsReceivableNetCurrent", "AccountsAndNotesReceivableNet", "AccountsReceivableNet",
+                 "ReceivablesNetCurrent"],
+    "proveedores": ["AccountsPayableCurrent", "AccountsPayableCurrentAndNoncurrent",
+                    "AccountsPayableAndAccruedLiabilitiesCurrent"],
 }
 DE_PERIODO = {"ebit", "ingresos", "beneficio_bruto", "coste_ventas", "beneficio_neto", "flujo_operativo", "acciones"}
 CAMPOS_BRUTOS = list(CONCEPTOS)
@@ -95,6 +115,7 @@ def compactar(companyfacts: dict) -> dict:
             if historial:
                 break
     return {
+        "version": VERSION_COMPACTO,
         "nombre": companyfacts.get("entityName", ""),
         "campos": campos,
         "acciones_hist": sorted(historial.values()),
@@ -134,10 +155,25 @@ def vista(tabla: pd.DataFrame, fecha=None) -> pd.DataFrame:
     # Beneficio bruto: si no lo publican, ingresos menos coste de ventas
     t["beneficio_bruto"] = t["beneficio_bruto"].fillna(t["ingresos"] - t["coste_ventas"])
     deuda_cp = t["deuda_cp_total"].fillna(cero("deuda_lp_corriente") + cero("prestamos_cp"))
-    t["deuda_lp"] = cero("deuda_lp")
+    partes_deuda = t[["deuda_convertible", "prestamos_lp", "pagares"]]
+    suma_partes = partes_deuda.sum(axis=1, min_count=1)
+    t["deuda_lp"] = t["deuda_lp"].fillna(suma_partes).fillna(0.0)
     t["deuda_total"] = t["deuda_lp"] + deuda_cp
     t["caja"] = cero("efectivo") + cero("inversiones_cp")
-    t["inmovilizado_neto"] = cero("inmovilizado_neto")
+
+    # Inmovilizado: si un año no se publica, se usa el del año anterior (mejor que suponer cero)
+    inmov = t["inmovilizado_neto"].ffill(limit=1)
+    petroleo = t["inmovilizado_petroleo"].ffill(limit=1)
+    # Si los yacimientos superan al inmovilizado publicado, este no los incluía: se suman
+    aparte = petroleo.notna() & (petroleo > inmov.fillna(0.0))
+    t["inmovilizado_neto"] = inmov.fillna(0.0) + petroleo.where(aparte, 0.0).fillna(0.0)
+
+    # Circulante operativo. Si el balance no separa corriente/no corriente, se estima
+    # con existencias + clientes - proveedores; si tampoco hay eso, queda desconocido (NaN).
+    circulante = (t["activo_corriente"] - t["caja"]) - t["pasivo_corriente"]
+    hay_partes = t["existencias"].notna() | t["clientes"].notna()
+    estimado = (cero("existencias") + cero("clientes") - cero("proveedores")).where(hay_partes)
+    t["capital_circulante"] = circulante.fillna(estimado)
     return t
 
 

@@ -6,6 +6,10 @@ import pandas as pd
 
 from .sec import vista
 
+# Si las últimas cuentas anuales tienen más de ~18 meses, algo falla (la empresa ha dejado
+# de publicar o ha cambiado cómo etiqueta sus cifras): mejor no puntuarla con datos viejos.
+ANTIGUEDAD_MAXIMA_DIAS = 550
+
 
 def _div(a, b):
     try:
@@ -75,9 +79,12 @@ def metricas_empresa(tabla, capitalizacion, fecha_corte=None):
     anterior = previas.iloc[-1] if not previas.empty else None
 
     valor_empresa = capitalizacion + actual.deuda_total - actual.caja
-    capital_circulante = (actual.activo_corriente - actual.caja) - actual.pasivo_corriente
-    capital_circulante = 0.0 if pd.isna(capital_circulante) else max(capital_circulante, 0.0)
-    capital_empleado = capital_circulante + actual.inmovilizado_neto
+    # Greenblatt: circulante operativo (si es negativo, cuenta como cero) + inmovilizado neto.
+    # Si no se conoce el circulante, la rentabilidad queda sin calcular en vez de inflarse.
+    capital_empleado = max(actual.capital_circulante, 0.0) + actual.inmovilizado_neto \
+        if not pd.isna(actual.capital_circulante) else np.nan
+    corte = pd.Timestamp(fecha_corte) if fecha_corte is not None else pd.Timestamp.today().normalize()
+    cuentas_al_dia = (corte - cierre).days <= ANTIGUEDAD_MAXIMA_DIAS
 
     puntos, evaluables, _ = f_score(actual, anterior)
     return {
@@ -85,6 +92,7 @@ def metricas_empresa(tabla, capitalizacion, fecha_corte=None):
         "ebit": actual.ebit,
         "rend_beneficios": _div(actual.ebit, valor_empresa) if valor_empresa > 0 else np.nan,
         "rend_capital": _div(actual.ebit, capital_empleado) if capital_empleado > 0 else np.nan,
+        "cuentas_al_dia": cuentas_al_dia,
         "fscore": puntos,
         "fscore_evaluables": evaluables,
         "cierre_ejercicio": cierre.date(),
@@ -117,6 +125,8 @@ def ordenar(df: pd.DataFrame, capitalizacion_minima: float) -> pd.DataFrame:
         & df["rend_beneficios"].notna()
         & df["rend_capital"].notna()
     )
+    if "cuentas_al_dia" in df:
+        df["base_ok"] &= df["cuentas_al_dia"].fillna(False).astype(bool)
     base = df[df["base_ok"]]
     df["puesto"] = np.nan
     if not base.empty:
