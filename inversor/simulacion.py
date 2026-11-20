@@ -33,21 +33,27 @@ def guardar(estado):
         json.dump(estado, f, ensure_ascii=False, indent=2)
 
 
-ESTILOS = ("trimestral", "diaria")
+ESTILOS = ("trimestral", "semanal", "diaria")
+# Estilos que compran y venden según el puesto en el ranking, y cada cuántos días se revisan
+DIAS_ENTRE_REVISIONES = {"semanal": 7, "diaria": 1}
 
 
 def reglas_para(cfg, estilo="trimestral"):
     if estilo not in ESTILOS:
         raise SystemExit(f"Estilo desconocido '{estilo}'. Usa uno de: {', '.join(ESTILOS)}")
     reglas = dict(cfg["cartera"])
-    if estilo == "diaria":
-        reglas.update(cfg.get("cartera_diaria") or {})
-        reglas["estilo"] = "diaria"
+    if estilo in DIAS_ENTRE_REVISIONES:
+        reglas.update(cfg.get(f"cartera_{estilo}") or {})
+        reglas["estilo"] = estilo
     return reglas
 
 
 def es_diaria(estado):
     return estado["reglas"].get("estilo") == "diaria"
+
+
+def _dias_entre_revisiones(estado):
+    return DIAS_ENTRE_REVISIONES.get(estado["reglas"].get("estilo"))
 
 
 def crear_cartera(nombre, capital, cfg, estilo="trimestral"):
@@ -70,7 +76,11 @@ def proxima_revision(estado):
     """Fecha de la próxima revisión, o None si no hay ninguna prevista o la cartera se revisa a diario."""
     if not estado["ultimo_rebalanceo"] or es_diaria(estado):
         return None
-    return pd.Timestamp(estado["ultimo_rebalanceo"]) + pd.DateOffset(months=estado["reglas"]["frecuencia_meses"])
+    ultimo = pd.Timestamp(estado["ultimo_rebalanceo"])
+    dias = _dias_entre_revisiones(estado)
+    if dias:
+        return ultimo + pd.Timedelta(days=dias)
+    return ultimo + pd.DateOffset(months=estado["reglas"]["frecuencia_meses"])
 
 
 def toca_rebalancear(estado, hoy=None):

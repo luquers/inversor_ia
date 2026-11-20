@@ -46,4 +46,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add carteras historico docs
           git diff --cached --quiet || git commit -m "Actualización $(date -u +%F)"
+          # Otra tarea puede haber guardado cambios mientras esta se ejecutaba: se traen antes de subir.
+          # Si chocan, se queda la versión de esta ejecución (la más reciente) y se rehace el panel
+          # para que incluya las carteras de las dos.
+          git pull --rebase -X theirs origin main
+          python main.py panel
+          git add docs
+          git diff --cached --quiet || git commit -m "Panel $(date -u +%F)"
           git push

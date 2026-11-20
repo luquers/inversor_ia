@@ -90,14 +90,15 @@ También puedes lanzar las acciones manuales desde el móvil con la app de GitHu
 
 Puedes crear varias con nombres distintos. Las reglas de `config.yaml` se congelan en cada cartera al crearla, así que para comparar estrategias: cambia `config.yaml`, crea otra cartera, y el panel te dejará cambiar entre ellas.
 
-### Cartera diaria
+### Carteras semanal y diaria
 
 Al crear una cartera puedes elegir el **estilo**:
 
 - **trimestral** (por defecto): las reglas de Greenblatt. Revisa cada 3 meses y mantiene cada acción un año.
 - **diaria**: revisa cada día de mercado. Compra las empresas que están entre las 20 mejores si hay hueco y vende en cuanto una cae fuera de las 50 mejores o deja de pasar el F-Score. Ajusta estos límites en `cartera_diaria` dentro de `config.yaml`.
+- **semanal**: las mismas reglas que la diaria, pero revisa una vez cada 7 días (`cartera_semanal`). Opera menos y paga menos comisiones.
 
-Crea una diaria con **Actions → Acciones manuales → Run workflow → Crear cartera ficticia**, con el nombre `diaria` y el estilo `diaria`. Compárala en el panel con la trimestral. Ten en cuenta que opera mucho más y que cada operación paga comisión. La simulación del pasado sigue usando las reglas trimestrales.
+Créalas con **Actions → Acciones manuales → Run workflow → Crear cartera ficticia**, poniendo como nombre y estilo `semanal` o `diaria`. Pueden convivir con la trimestral y compararse en el panel. Ten en cuenta que opera mucho más y que cada operación paga comisión. La simulación del pasado sigue usando las reglas trimestrales.
 
 ---
 

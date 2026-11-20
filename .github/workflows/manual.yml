@@ -14,11 +14,12 @@ on:
         description: "Nombre de la cartera (solo para crearla)"
         default: "principal"
       estilo:
-        description: "Estilo de la cartera (solo para crearla): trimestral = reglas de Greenblatt, diaria = compra y vende cada día"
+        description: "Estilo de la cartera (solo para crearla): trimestral = reglas de Greenblatt, semanal / diaria = compra y vende según el ranking cada semana / cada día"
         type: choice
         default: trimestral
         options:
           - trimestral
+          - semanal
           - diaria
       capital:
         description: "Capital ficticio en dólares"
@@ -80,6 +81,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add carteras historico docs
           git diff --cached --quiet || git commit -m "$ACCION $(date -u +%F)"
+          # Otra tarea puede haber guardado cambios mientras esta se ejecutaba: se traen antes de subir.
+          # Si chocan, se queda la versión de esta ejecución (la más reciente) y se rehace el panel
+          # para que incluya las carteras de las dos.
+          git pull --rebase -X theirs origin main
+          python main.py panel
+          git add docs
+          git diff --cached --quiet || git commit -m "Panel $(date -u +%F)"
           git push
         env:
           ACCION: ${{ inputs.accion }}

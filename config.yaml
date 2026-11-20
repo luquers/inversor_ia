@@ -45,6 +45,11 @@ cartera_diaria:
   compras_por_tanda: 20         # puede llenar los huecos el mismo día
   vender_fuera_del_top: 50      # margen para no comprar y vender por pequeños movimientos de precio
 
+# Estilo "semanal": las mismas reglas que "diaria", pero solo revisa una vez cada 7 días
+cartera_semanal:
+  compras_por_tanda: 20
+  vender_fuera_del_top: 50
+
 # Índice con el que compararte
 referencia: SPY
 

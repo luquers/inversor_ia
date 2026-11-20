@@ -4,7 +4,7 @@ Asistente de inversión: Fórmula Mágica (Greenblatt) + F-Score (Piotroski).
 Comandos:
   python main.py ranking                       Mejores empresas hoy
   python main.py crear --nombre prueba         Nueva cartera con dinero ficticio
-  python main.py crear --nombre diaria --estilo diaria   Cartera que opera cada día
+  python main.py crear --nombre diaria --estilo diaria   Cartera que opera cada día (o --estilo semanal)
   python main.py estado [--nombre prueba]      Cómo va tu cartera simulada
   python main.py actualizar [--nombre prueba]  Avanza la cartera simulada a hoy
   python main.py pasado [--inicio 2012-01-01]  Cómo te habría ido en el pasado
@@ -124,7 +124,8 @@ def main():
     s.add_argument("--nombre", required=True)
     s.add_argument("--capital", type=float, default=10_000)
     s.add_argument("--estilo", choices=sim.ESTILOS, default="trimestral",
-                   help="trimestral: reglas de Greenblatt (por defecto). diaria: compra y vende cada día según el ranking")
+                   help="trimestral: reglas de Greenblatt (por defecto). semanal / diaria: compra y vende "
+                        "según el ranking cada semana / cada día")
     s.set_defaults(func=cmd_crear)
 
     for nombre, func, ayuda in [("estado", cmd_estado, "Ver carteras simuladas"),

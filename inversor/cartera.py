@@ -76,12 +76,12 @@ class Cartera:
 
     # ------------------------------------------------------------ la regla
     def rebalancear(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
-        if self.reglas.get("estilo") == "diaria":
-            return self._rebalancear_diario(fecha, candidatos, precios)
+        if self.reglas.get("estilo") in ("diaria", "semanal"):
+            return self._rebalancear_por_ranking(fecha, candidatos, precios)
         return self._rebalancear_periodico(fecha, candidatos, precios)
 
-    def _rebalancear_diario(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
-        """
+    def _rebalancear_por_ranking(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
+        """Estilos diaria y semanal (solo cambia cada cuánto se llama).
         1. Vende lo que ha caído fuera de las `vender_fuera_del_top` mejores (o ya no pasa el F-Score).
         2. Compra las que están entre las `num_posiciones` mejores y no tiene, si hay hueco.
         """
