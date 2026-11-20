@@ -1,0 +1,395 @@
+{
+  "nombre": "diaria",
+  "capital_inicial": 10000.0,
+  "fecha_inicio": "2026-11-20",
+  "ultimo_rebalanceo": "2026-11-20",
+  "reglas": {
+    "num_posiciones": 20,
+    "compras_por_tanda": 20,
+    "frecuencia_meses": 3,
+    "mantener_dias": 365,
+    "renovar_si_sigue_en_lista": true,
+    "acciones_fraccionadas": false,
+    "comision_pct": 0.001,
+    "comision_minima": 1.0,
+    "vender_fuera_del_top": 50,
+    "estilo": "diaria"
+  },
+  "fscore_minimo": 5,
+  "referencia": "SPY",
+  "precio_referencia_inicio": 690.4299926757812,
+  "cartera": {
+    "efectivo": 639.9250450134277,
+    "posiciones": {
+      "PTCT": {
+        "acciones": 8,
+        "precio_compra": 56.41999816894531,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 56.41999816894531
+      },
+      "HRMY": {
+        "acciones": 15,
+        "precio_compra": 32.59000015258789,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 32.59000015258789
+      },
+      "COLL": {
+        "acciones": 20,
+        "precio_compra": 24.719999313354492,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 24.719999313354492
+      },
+      "HRB": {
+        "acciones": 10,
+        "precio_compra": 46.02000045776367,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 46.02000045776367
+      },
+      "SNDK": {
+        "acciones": 6,
+        "precio_compra": 79.23999786376953,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 79.23999786376953
+      },
+      "UPWK": {
+        "acciones": 58,
+        "precio_compra": 8.550000190734863,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 8.550000190734863
+      },
+      "PRDO": {
+        "acciones": 18,
+        "precio_compra": 27.469999313354492,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 27.469999313354492
+      },
+      "DECK": {
+        "acciones": 6,
+        "precio_compra": 77.93000030517578,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 77.93000030517578
+      },
+      "KBR": {
+        "acciones": 15,
+        "precio_compra": 31.459999084472656,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 31.459999084472656
+      },
+      "RSI": {
+        "acciones": 44,
+        "precio_compra": 11.225000381469727,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 11.225000381469727
+      },
+      "YELP": {
+        "acciones": 27,
+        "precio_compra": 18.184999465942383,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 18.184999465942383
+      },
+      "STRA": {
+        "acciones": 9,
+        "precio_compra": 50.70000076293945,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 50.70000076293945
+      },
+      "ADBE": {
+        "acciones": 2,
+        "precio_compra": 217.7100067138672,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 217.7100067138672
+      },
+      "GEN": {
+        "acciones": 17,
+        "precio_compra": 29.190000534057617,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 29.190000534057617
+      },
+      "G": {
+        "acciones": 12,
+        "precio_compra": 41.5,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 41.5
+      },
+      "KFY": {
+        "acciones": 6,
+        "precio_compra": 73.23999786376953,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 73.23999786376953
+      },
+      "INVA": {
+        "acciones": 27,
+        "precio_compra": 18.40999984741211,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 18.40999984741211
+      },
+      "BKE": {
+        "acciones": 11,
+        "precio_compra": 44.15999984741211,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 44.15999984741211
+      },
+      "IDCC": {
+        "acciones": 1,
+        "precio_compra": 253.3699951171875,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 253.3699951171875
+      },
+      "ADT": {
+        "acciones": 50,
+        "precio_compra": 9.869999885559082,
+        "fecha_compra": "2026-11-20",
+        "inicio_periodo": "2026-11-20",
+        "ultimo_precio": 9.869999885559082
+      }
+    },
+    "operaciones": [
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "PTCT",
+        "acciones": 8,
+        "precio": 56.42,
+        "importe": 451.36,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 1 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "HRMY",
+        "acciones": 15,
+        "precio": 32.59,
+        "importe": 488.85,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 2 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "COLL",
+        "acciones": 20,
+        "precio": 24.72,
+        "importe": 494.4,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 3 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "HRB",
+        "acciones": 10,
+        "precio": 46.02,
+        "importe": 460.2,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 4 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "SNDK",
+        "acciones": 6,
+        "precio": 79.24,
+        "importe": 475.44,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 5 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "UPWK",
+        "acciones": 58,
+        "precio": 8.55,
+        "importe": 495.9,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 6 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "PRDO",
+        "acciones": 18,
+        "precio": 27.47,
+        "importe": 494.46,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 7 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "DECK",
+        "acciones": 6,
+        "precio": 77.93,
+        "importe": 467.58,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 8 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "KBR",
+        "acciones": 15,
+        "precio": 31.46,
+        "importe": 471.9,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 9 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "RSI",
+        "acciones": 44,
+        "precio": 11.225,
+        "importe": 493.9,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 10 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "YELP",
+        "acciones": 27,
+        "precio": 18.185,
+        "importe": 490.99,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 11 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "STRA",
+        "acciones": 9,
+        "precio": 50.7,
+        "importe": 456.3,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 12 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "ADBE",
+        "acciones": 2,
+        "precio": 217.71,
+        "importe": 435.42,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 13 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "GEN",
+        "acciones": 17,
+        "precio": 29.19,
+        "importe": 496.23,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 14 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "G",
+        "acciones": 12,
+        "precio": 41.5,
+        "importe": 498.0,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 15 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "KFY",
+        "acciones": 6,
+        "precio": 73.24,
+        "importe": 439.44,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 16 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "INVA",
+        "acciones": 27,
+        "precio": 18.41,
+        "importe": 497.07,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 17 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "BKE",
+        "acciones": 11,
+        "precio": 44.16,
+        "importe": 485.76,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 18 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "IDCC",
+        "acciones": 1,
+        "precio": 253.37,
+        "importe": 253.37,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 19 del ranking"
+      },
+      {
+        "fecha": "2026-11-20",
+        "tipo": "COMPRA",
+        "ticker": "ADT",
+        "acciones": 50,
+        "precio": 9.87,
+        "importe": 493.5,
+        "comision": 1.0,
+        "resultado_pct": null,
+        "motivo": "Entra en el puesto 20 del ranking"
+      }
+    ]
+  },
+  "historial": [
+    {
+      "fecha": "2026-11-20",
+      "cartera": 9980.0,
+      "referencia": 10000.0
+    }
+  ]
+}
