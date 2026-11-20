@@ -45,7 +45,7 @@
         "precio_compra": 46.02000045776367,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 46.02000045776367
+        "ultimo_precio": 46.0099983215332
       },
       "SNDK": {
         "acciones": 6,
@@ -116,8 +116,8 @@
   "historial": [
     {
       "fecha": "2026-11-20",
-      "cartera": 9995.0,
-      "referencia": 10000.0
+      "cartera": 9994.9,
+      "referencia": 10006.37
     }
   ]
 }
