@@ -52,7 +52,7 @@
         "precio_compra": 79.23999786376953,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 79.23999786376953
+        "ultimo_precio": 94.3949966430664
       }
     },
     "operaciones": [
@@ -117,6 +117,11 @@
     {
       "fecha": "2026-11-20",
       "cartera": 9994.9,
+      "referencia": 9991.02
+    },
+    {
+      "fecha": "2026-11-21",
+      "cartera": 10085.83,
       "referencia": 9991.02
     }
   ]

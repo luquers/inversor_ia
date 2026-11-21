@@ -54,7 +54,7 @@
         "precio_compra": 79.23999786376953,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 79.23999786376953
+        "ultimo_precio": 94.3949966430664
       },
       "UPWK": {
         "acciones": 58,
@@ -389,6 +389,11 @@
     {
       "fecha": "2026-11-20",
       "cartera": 9979.91,
+      "referencia": 9991.02
+    },
+    {
+      "fecha": "2026-11-21",
+      "cartera": 10070.84,
       "referencia": 9991.02
     }
   ]
