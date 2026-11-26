@@ -24,35 +24,40 @@
         "precio_compra": 56.41999816894531,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 62.04999923706055
+        "ultimo_precio": 62.04999923706055,
+        "maximo": 62.04999923706055
       },
       "HRMY": {
         "acciones": 15,
         "precio_compra": 32.59000015258789,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 35.2599983215332
+        "ultimo_precio": 35.2599983215332,
+        "maximo": 35.2599983215332
       },
       "COLL": {
         "acciones": 20,
         "precio_compra": 24.719999313354492,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 25.0
+        "ultimo_precio": 25.0,
+        "maximo": 25.0
       },
       "HRB": {
         "acciones": 10,
         "precio_compra": 46.02000045776367,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 47.33000183105469
+        "ultimo_precio": 47.33000183105469,
+        "maximo": 47.33000183105469
       },
       "SNDK": {
         "acciones": 6,
         "precio_compra": 79.23999786376953,
         "fecha_compra": "2026-11-20",
         "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 94.3949966430664
+        "ultimo_precio": 94.3949966430664,
+        "maximo": 94.3949966430664
       }
     },
     "operaciones": [
