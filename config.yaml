@@ -45,6 +45,18 @@ cartera_diaria:
   compras_por_tanda: 20         # puede llenar los huecos el mismo día
   vender_fuera_del_top: 50      # margen para no comprar y vender por pequeños movimientos de precio
 
+# Estilo "reactiva": las reglas de "diaria" y además reacciona al mercado y a las noticias.
+# Revisa el ranking al cierre de cada día y vigila sus protecciones cada hora durante la sesión.
+cartera_reactiva:
+  compras_por_tanda: 20
+  vender_fuera_del_top: 50
+  stop_movil_pct: 15            # vende si cae este % desde su máximo desde que se compró
+  caida_noticia_pct: 5          # vende ante una noticia grave si además cae este % en 5 sesiones
+  caida_brusca_pct: 7           # no compra una empresa el día que cae este % o más
+  vetar_dias: 30                # tras vender por protección, no la recompra en estos días
+  noticias: true                # tener en cuenta las noticias (Google News, gratis)
+  filtro_mercado: true          # no compra si el índice está por debajo de su media de 200 sesiones
+
 # Estilo "semanal": las mismas reglas que "diaria", pero solo revisa una vez cada 7 días
 cartera_semanal:
   compras_por_tanda: 20

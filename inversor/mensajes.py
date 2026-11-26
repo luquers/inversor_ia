@@ -5,14 +5,21 @@ La idea: que alguien sin conocimientos de bolsa entienda qué ha pasado y por qu
 from __future__ import annotations
 
 import re
-from html import escape
+from html import escape as _escape
 
 import pandas as pd
+
+
+def escape(texto):
+    """Escapa &, < y > para el HTML de Telegram (las comillas no hace falta escaparlas)."""
+    return _escape(str(texto), quote=False)
+
 
 ESTILOS = {
     "trimestral": ("Trimestral", "revisa cada 3 meses y mantiene cada empresa un año"),
     "semanal": ("Semanal", "revisa cada semana según el ranking"),
     "diaria": ("Diaria", "revisa cada día según el ranking"),
+    "reactiva": ("Reactiva", "vigila el mercado y las noticias varias veces al día y se protege de las caídas"),
 }
 NOMBRES_REFERENCIA = {"SPY": "el S&P 500", "VOO": "el S&P 500", "IVV": "el S&P 500", "QQQ": "el Nasdaq 100"}
 
@@ -117,7 +124,15 @@ def razon_operacion(op: dict, e: dict | None, fscore_minimo=5) -> str:
     if op["tipo"] == "MANTENER":
         return "Cumple un año en la cartera, pero sigue entre las mejores, así que se queda otro año."
     m = re.search(r"puesto (\d+).*?(\d+) mejores", motivo)
-    if m:
+    stop = re.match(r"Stop móvil: cae un (\d+) % desde su máximo de ([\d.]+)", motivo)
+    grave = re.match(r"Noticia grave y caída del (\d+) % en 5 sesiones: «(.*)»", motivo)
+    if stop:
+        texto = (f"Ha caído un {stop.group(1)} % desde el máximo que alcanzó en la cartera "
+                 f"({num(float(stop.group(2)), 2)} $), y salta la protección (stop móvil): se vende para limitar pérdidas.")
+    elif grave:
+        texto = (f"Ha salido una noticia grave («{grave.group(2)}») y la acción ya cae un {grave.group(1)} % "
+                 "en 5 sesiones: se vende por precaución.")
+    elif m:
         texto = (f"Ha bajado al puesto {m.group(1)} del ranking: ya no está entre las {m.group(2)} mejores, "
                  "así que deja su sitio a otras más atractivas.")
     elif motivo.startswith("Ya no pasa el filtro"):
@@ -141,6 +156,11 @@ def nota_posicion(pos: dict, estado: dict, e: dict | None) -> str:
         hasta = pd.Timestamp(pos.get("inicio_periodo", pos["fecha_compra"])) + pd.Timedelta(days=reglas["mantener_dias"])
         return f"{ahora}Se mantiene al menos hasta el {fecha_larga(hasta)}."
     limite = max(reglas.get("vender_fuera_del_top", 50), reglas["num_posiciones"])
+    if estilo(estado) == "reactiva":
+        stop = pos.get("maximo", pos["precio_compra"]) * (1 - reglas.get("stop_movil_pct", 15) / 100)
+        extra = f"si cae por debajo de {num(stop, 2)} $ (stop móvil) o ante una noticia grave"
+        return f"{ahora}Se vendería si baja del puesto {limite}, {extra}." if puesto else \
+            f"Ha salido del ranking: se venderá en la próxima revisión, o antes {extra}."
     if puesto:
         return f"{ahora}Se vendería si baja del puesto {limite}."
     return "Ha salido del ranking: se venderá en la próxima revisión."
@@ -178,6 +198,75 @@ def mensaje_novedades(items, info: dict, cfg: dict, max_ops=8) -> str:
         if len(ops) > max_ops:
             partes.append(f"…y {len(ops) - max_ops} movimientos más (míralos en el menú del bot).")
         partes.append(f"Ahora la cartera {linea_resultado(estado, ref)[2]}.")
+    return "\n".join(partes)
+
+
+def _cambio_del_dia(estado):
+    h = estado["historial"]
+    if len(h) < 2:
+        return None
+    return (h[-1]["cartera"] / h[-2]["cartera"] - 1) * 100
+
+
+def linea_noticia(t, h):
+    from .noticias import TONOS
+    fuente = f" ({escape(h['fuente'])})" if h.get("fuente") else ""
+    return f"{TONOS[h['tono']]} <b>{escape(t)}</b>: {escape(h['titulo'])}{fuente}"
+
+
+def mensaje_parte_diario(items, ctx: dict, cfg: dict, info: dict, max_ops=6, max_noticias=6) -> str:
+    """Parte de cada día de mercado: índice, carteras, movimientos, noticias de tus empresas y geopolítica.
+    `items`: lista de (estado, operaciones de hoy)."""
+    ref = escape(nombre_referencia(cfg))
+    fecha = ctx.get("fecha_precios") or pd.Timestamp.today()
+    dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+    partes = [f"📅 <b>Parte del {dias[pd.Timestamp(fecha).weekday()]} {fecha_corta(fecha)}</b>"]
+
+    indice = ctx.get("indice") or {}
+    if indice.get("cambio_dia") is not None:
+        tendencia = ("por encima de su media de 200 sesiones: tendencia de fondo alcista" if indice.get("sobre_media")
+                     else "por debajo de su media de 200 sesiones: tendencia bajista, la cartera reactiva no compra")
+        partes += ["", f"📈 <b>Mercado</b>: {ref} {pct(indice['cambio_dia'])} hoy, {tendencia}."]
+
+    partes += ["", "💼 <b>Tus carteras</b> (dinero ficticio)"]
+    for estado, _ in items:
+        r, _, _ = linea_resultado(estado, ref)
+        dia = _cambio_del_dia(estado)
+        hoy = f"{pct(dia)} hoy, " if dia is not None else ""
+        partes.append(f"• <b>{escape(titulo_cartera(estado))}</b>: {dinero(_valor_actual(estado)[0])} ({hoy}{pct(r)} desde el inicio)")
+
+    con_ops = [(e, ops) for e, ops in items if ops]
+    if con_ops:
+        iconos = {"COMPRA": "🟢 <b>Compra</b>", "VENTA": "🔴 <b>Vende</b>", "MANTENER": "🔵 <b>Mantiene</b>"}
+        partes += ["", "🔔 <b>Movimientos de hoy</b>"]
+        for estado, ops in con_ops:
+            partes.append(f"<i>{escape(titulo_cartera(estado))}</i>")
+            for op in ops[:max_ops]:
+                e = info.get(op["ticker"])
+                nombre = f" · {escape(e['nombre'])}" if e and e.get("nombre") else ""
+                razon = op.get("explicacion") or razon_operacion(op, e, cfg["fscore_minimo"])
+                partes += [f"{iconos.get(op['tipo'], op['tipo'])} {escape(op['ticker'])}{nombre}", f"<i>{escape(razon)}</i>"]
+            if len(ops) > max_ops:
+                partes.append(f"…y {len(ops) - max_ops} más (míralos en el menú del bot).")
+    else:
+        partes += ["", "🔔 Hoy ninguna cartera ha comprado ni vendido."]
+
+    # Noticias de las empresas que tienes: primero las graves y negativas
+    tenidas = {t for e, _ in items for t in e["cartera"]["posiciones"]}
+    orden = {"grave": 0, "negativa": 1, "positiva": 2, "neutra": 3}
+    destacadas = sorted(((t, h) for t, r in (ctx.get("noticias") or {}).items() if t in tenidas
+                         for h in r["destacados"][:1] if h["tono"] != "neutra"), key=lambda th: orden[th[1]["tono"]])
+    if destacadas:
+        partes += ["", "📰 <b>Noticias de tus empresas</b>"]
+        partes += [linea_noticia(t, h) for t, h in destacadas[:max_noticias]]
+        partes.append("<i>🔴 grave · 🟠 negativa · 🟢 positiva (clasificación automática por palabras clave)</i>")
+
+    if ctx.get("macro"):
+        partes += ["", "🌍 <b>Economía y geopolítica</b>"]
+        for h in ctx["macro"][:8]:
+            fuente = f" ({escape(h['fuente'])})" if h.get("fuente") else ""
+            partes.append(f"• {escape(h['titulo'])}{fuente}")
+    partes += ["", "Abre el menú del bot (/menu) para ver el detalle de cada cartera y sus noticias."]
     return "\n".join(partes)
 
 

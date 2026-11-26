@@ -10,6 +10,7 @@ const posiciones = Array.from({ length: 20 }, (_, i) => ({
   valor: 500 - i, rent: i % 2 ? 1.5 : -0.7,
   porque: "Genera 15 $ de beneficio al año por cada 100 $ que vale la empresa y su salud financiera es buena (7/9).",
   nota: `Ahora es la n.º ${i + 1} del ranking. Se vendería si baja del puesto 50.`,
+  noticias: i % 3 ? [] : [{ titulo: `Empresa ${i} <cuts> guidance & more`, fuente: "Reuters", fecha: "2026-11-25", tono: ["grave", "negativa", "positiva", "neutra"][i % 4] }],
 }));
 const ruta = process.argv[2];
 const DATOS = ruta ? JSON.parse(readFileSync(ruta, "utf8")) : {
@@ -26,6 +27,8 @@ const DATOS = ruta ? JSON.parse(readFileSync(ruta, "utf8")) : {
   ],
   top: Array.from({ length: 20 }, (_, i) => ({ ticker: `T${i}`, nombre: `Empresa ${i}`, puesto: i + 1, porque: "Barata y sana." })),
   avisos: [],
+  mercado: { fecha: "2026-11-25", ticker: "SPY", cambio_dia: -0.4, sobre_media: false },
+  macro: [{ titulo: "La Reserva Federal & los tipos <hoy>", fuente: "El País", tema: "Tipos e inflación" }],
 };
 
 // ---- simulación de Telegram, KV y la web de datos
@@ -118,7 +121,7 @@ assert.match(enviadosA(ADMIN)[0].text, /Has dado acceso a/);
 
 // 5. Navega por todas las pantallas
 const nombres = DATOS.carteras.map((c) => c.nombre);
-const acciones = ["menu", "carteras", "todas", "top:0", "top:1", "como:0", "como:1", "como:2", "glosario",
+const acciones = ["menu", "carteras", "todas", "noticias", "top:0", "top:1", "como:0", "como:1", "como:2", "glosario",
   ...nombres.flatMap((n) => [`c:${n}`, `por:${n}:0`, `por:${n}:1`, `por:${n}:9`, `mov:${n}`]), "c:no-existe", "raro"];
 for (const accion of acciones) {
   reiniciar();
@@ -134,6 +137,18 @@ assert.match(enviadosA(AMIGA)[0].text, /Hoy vale/);
 reiniciar();
 await pulsa(AMIGA, "Lucia", "usuarios");
 assert.doesNotMatch(enviadosA(AMIGA)[0].text, /Personas/, "La gestión de personas es solo para el administrador");
+
+reiniciar();
+await pulsa(AMIGA, "Lucia", "noticias");
+const pantallaNoticias = enviadosA(AMIGA)[0].text;
+if (!ruta) {
+  assert.match(pantallaNoticias, /tendencia bajista/);
+  assert.match(pantallaNoticias, /Reserva Federal &amp; los tipos &lt;hoy&gt;/);
+  assert.ok(pantallaNoticias.indexOf("🔴") < pantallaNoticias.indexOf("🟠"), "Las graves primero");
+  reiniciar();
+  await pulsa(AMIGA, "Lucia", "por:diaria:0");
+  assert.match(enviadosA(AMIGA)[0].text, /🔴 Empresa 0 &lt;cuts&gt; guidance/);
+}
 
 // 6. Comandos escritos
 for (const cmd of ["/carteras", "/ranking", "/ayuda", "/menu", "texto cualquiera"]) {

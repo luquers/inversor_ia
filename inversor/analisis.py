@@ -80,6 +80,61 @@ def avisos_vigilancia(ranking: pd.DataFrame, cfg: dict, vigiladas) -> list[str]:
     return avisos
 
 
+def dia_de_mercado(ahora=None) -> pd.Timestamp:
+    """Día de bolsa (EE. UU.) al que corresponde una ejecución. Wall Street cierra hacia las 21:00 UTC:
+    una tarea del lunes que GitHub retrasa al martes de madrugada sigue contando como lunes."""
+    ahora = pd.Timestamp(ahora) if ahora is not None else pd.Timestamp.now(tz="UTC").tz_localize(None)
+    dia = (ahora - pd.Timedelta(hours=21)).normalize()
+    while dia.weekday() >= 5:   # fin de semana: cuenta como el viernes
+        dia -= pd.Timedelta(days=1)
+    return dia
+
+
+def toca_informe_semanal(dia_informe: int, ahora=None) -> bool:
+    """El informe sale en la primera ejecución de la semana a partir de `dia_informe`, aunque llegue tarde."""
+    dia = dia_de_mercado(ahora)
+    ruta = HISTORICO / "ultimo_informe.txt"
+    ultimo = ruta.read_text().strip() if ruta.exists() else ""
+    return dia.weekday() >= dia_informe and ultimo != _semana(dia)
+
+
+def marcar_informe_enviado(ahora=None):
+    HISTORICO.mkdir(exist_ok=True)
+    (HISTORICO / "ultimo_informe.txt").write_text(_semana(dia_de_mercado(ahora)))
+
+
+def parte_ya_enviado(fecha_mercado) -> bool:
+    """El parte diario sale una vez por cada sesión de bolsa (no en festivos ni repetido)."""
+    ruta = HISTORICO / "ultimo_parte.txt"
+    return ruta.exists() and ruta.read_text().strip() == str(pd.Timestamp(fecha_mercado).date())
+
+
+def marcar_parte_enviado(fecha_mercado):
+    HISTORICO.mkdir(exist_ok=True)
+    (HISTORICO / "ultimo_parte.txt").write_text(str(pd.Timestamp(fecha_mercado).date()))
+
+
+def guardar_contexto(ctx):
+    """Noticias, mercado y geopolítica del último parte, para el panel y el bot."""
+    if not ctx:
+        return
+    from .noticias import a_json
+    import json
+    datos = {
+        "fecha": str(pd.Timestamp(ctx["fecha_precios"]).date()),
+        "indice": ctx.get("indice") or {},
+        "noticias": {t: a_json(r) for t, r in (ctx.get("noticias") or {}).items()},
+        "macro": a_json(ctx.get("macro") or []),
+    }
+    HISTORICO.mkdir(exist_ok=True)
+    (HISTORICO / "contexto.json").write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+
+
+def _semana(dia):
+    anio, semana, _ = dia.isocalendar()
+    return f"{anio}-S{semana:02d}"
+
+
 def cambios_top(ranking: pd.DataFrame, n: int):
     """Qué empresas entran y salen del top n respecto al último informe (y guarda el actual)."""
     HISTORICO.mkdir(exist_ok=True)

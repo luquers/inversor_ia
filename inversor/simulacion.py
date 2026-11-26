@@ -34,9 +34,10 @@ def guardar(estado):
         json.dump(estado, f, ensure_ascii=False, indent=2)
 
 
-ESTILOS = ("trimestral", "semanal", "diaria")
+ESTILOS = ("trimestral", "semanal", "diaria", "reactiva")
 # Estilos que compran y venden según el puesto en el ranking, y cada cuántos días se revisan
-DIAS_ENTRE_REVISIONES = {"semanal": 7, "diaria": 1}
+# (la reactiva además vigila sus protecciones varias veces al día: ver vigilar_cartera)
+DIAS_ENTRE_REVISIONES = {"semanal": 7, "diaria": 1, "reactiva": 1}
 
 
 def reglas_para(cfg, estilo="trimestral"):
@@ -50,7 +51,12 @@ def reglas_para(cfg, estilo="trimestral"):
 
 
 def es_diaria(estado):
-    return estado["reglas"].get("estilo") == "diaria"
+    """Se revisa cada día de mercado (diaria y reactiva)."""
+    return estado["reglas"].get("estilo") in ("diaria", "reactiva")
+
+
+def es_reactiva(estado):
+    return estado["reglas"].get("estilo") == "reactiva"
 
 
 def _dias_entre_revisiones(estado):
@@ -93,8 +99,9 @@ def toca_rebalancear(estado, hoy=None):
     return hoy >= proxima_revision(estado)
 
 
-def actualizar_cartera(nombre, cfg, ranking=None):
-    """Valora la cartera con los precios de hoy y, si toca, aplica las reglas de compra/venta."""
+def actualizar_cartera(nombre, cfg, ranking=None, ctx=None):
+    """Valora la cartera con los precios de hoy y, si toca, aplica las reglas de compra/venta.
+    `ctx` (mercado.contexto) lo usa la cartera reactiva: noticias, caídas y tendencia del índice."""
     estado = cargar(nombre)
     cartera = Cartera.desde_dict(estado["cartera"], estado["reglas"])
     hoy = pd.Timestamp.today().normalize()
@@ -108,13 +115,19 @@ def actualizar_cartera(nombre, cfg, ranking=None):
 
     ref = estado["referencia"]
     tickers = set(cartera.posiciones) | set(candidatos[:80]) | {ref}
-    cierres, _, _ = descargar_precios(tickers, periodo="10d")
+    cierres, _, splits = descargar_precios(tickers, periodo="10d")
+    for nota in cartera.aplicar_splits(splits):
+        print(f"Ajuste por split en «{nombre}»: {nota}")
     precios = cierres.ffill().iloc[-1].to_dict()
+    # El historial se fecha con el día de cierre de esos precios, no con el día en que se ejecuta
+    # la tarea (GitHub a veces la retrasa varias horas y cae ya en el día siguiente)
+    con_precio = cierres.dropna(how="all").index
+    fecha_precios = pd.Timestamp(con_precio[-1]).normalize() if len(con_precio) else hoy
     cartera.actualizar_precios(precios)
 
     operaciones = []
     if rebalanceo:
-        operaciones = cartera.rebalancear(hoy, candidatos, precios)
+        operaciones = cartera.rebalancear(hoy, candidatos, precios, ctx)
         estado["ultimo_rebalanceo"] = str(hoy.date())
         # Se guarda el porqué de cada operación con los datos de hoy, para el bot y el panel
         info = mensajes.info_empresas(ranking, extra=[op["ticker"] for op in operaciones])
@@ -125,12 +138,29 @@ def actualizar_cartera(nombre, cfg, ranking=None):
         estado["precio_referencia_inicio"] = precios.get(ref)
     valor = cartera.valor(precios)
     valor_ref = estado["capital_inicial"] * precios[ref] / estado["precio_referencia_inicio"]
-    registro = {"fecha": str(hoy.date()), "cartera": round(valor, 2), "referencia": round(valor_ref, 2)}
+    registro = {"fecha": str(fecha_precios.date()), "cartera": round(valor, 2), "referencia": round(valor_ref, 2)}
     historial = [h for h in estado["historial"] if h["fecha"] != registro["fecha"]]
     estado["historial"] = historial + [registro]
     estado["cartera"] = cartera.a_dict()
     guardar(estado)
     return estado, operaciones
+
+
+def vigilar_cartera(nombre, ctx) -> list[dict]:
+    """Comprobación rápida durante la sesión (solo cartera reactiva): stop móvil y noticias graves.
+    Solo guarda si vende algo, para no llenar el repositorio de cambios."""
+    estado = cargar(nombre)
+    if not es_reactiva(estado):
+        return []
+    cartera = Cartera.desde_dict(estado["cartera"], estado["reglas"])
+    hubo_split = bool(cartera.aplicar_splits(ctx.get("splits") or {}))
+    operaciones = cartera.vigilar(pd.Timestamp.today().normalize(), ctx["precios"], ctx)
+    if operaciones or hubo_split:
+        for op in operaciones:
+            op["explicacion"] = mensajes.razon_operacion(op, None, estado["fscore_minimo"])
+        estado["cartera"] = cartera.a_dict()
+        guardar(estado)
+    return operaciones
 
 
 def describir_cartera(estado, operaciones=()) -> str:

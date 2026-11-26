@@ -202,6 +202,8 @@ sim.crear_cartera("principal", 10_000, cfg)
 estado, ops_hoy = sim.actualizar_cartera("principal", cfg)
 assert len(ops_hoy) == cfg["cartera"]["compras_por_tanda"]
 assert sim.actualizar_cartera("principal", cfg)[1] == [], "El mismo día no debe volver a operar"
+assert sim.cargar("principal")["historial"][-1]["fecha"] == str(dias[-1].date()), \
+    "El historial se fecha con el día de cierre de los precios, no con el de la ejecución"
 assert "estilo" not in sim.cargar("principal")["reglas"], "La cartera trimestral no cambia de reglas"
 
 # --- 6. Cartera diaria
@@ -339,5 +341,158 @@ assert all(e[1]["data"]["text"].count("<b>") == e[1]["data"]["text"].count("</b>
 for k in ("BOT_URL", "BOT_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"):
     _os.environ.pop(k)
 print("[OK] Mensajes de Telegram claros y válidos, datos del bot y envío con respaldo")
+
+# --- 9. Retrasos de GitHub: el día de mercado y el informe semanal no dependen de la hora de ejecución
+T = pd.Timestamp
+assert analisis.dia_de_mercado(T("2026-11-23 22:30")) == T("2026-11-23"), "A su hora: lunes"
+assert analisis.dia_de_mercado(T("2026-11-24 06:12")) == T("2026-11-23"), "Retrasada al martes de madrugada: sigue siendo lunes"
+assert analisis.dia_de_mercado(T("2026-11-21 03:19")) == T("2026-11-20"), "Sábado de madrugada: viernes"
+assert analisis.dia_de_mercado(T("2026-11-22 12:00")) == T("2026-11-20"), "Domingo: viernes"
+(analisis.HISTORICO / "ultimo_informe.txt").unlink(missing_ok=True)
+assert analisis.toca_informe_semanal(0, T("2026-11-21 03:19")), "Si esa semana aún no salió, sale aunque sea viernes"
+analisis.marcar_informe_enviado(T("2026-11-21 03:19"))
+assert not analisis.toca_informe_semanal(0, T("2026-11-22 12:00")), "El fin de semana cuenta como el viernes ya informado"
+assert analisis.toca_informe_semanal(0, T("2026-11-24 06:12")), "El lunes retrasado al martes sí envía el informe"
+analisis.marcar_informe_enviado(T("2026-11-24 06:12"))
+assert not analisis.toca_informe_semanal(0, T("2026-11-24 23:00")), "Una vez por semana"
+assert not analisis.toca_informe_semanal(0, T("2026-11-28 04:00"))
+assert analisis.toca_informe_semanal(0, T("2026-12-02 05:00")), "Si el lunes no hubo ejecución, sale el martes"
+assert not analisis.toca_informe_semanal(2, T("2026-12-01 05:00")), "Respeta el día elegido (miércoles)"
+print("[OK] Retrasos de GitHub: fechas de cierre e informe semanal una vez por semana")
+
+# --- 10. Noticias gratuitas (Google News RSS) y su clasificación
+from inversor import noticias as nt  # noqa: E402
+
+RSS = """<?xml version="1.0"?><rss><channel>
+<item><title>Acme Corp files for Chapter 11 bankruptcy - Reuters</title><source>Reuters</source>
+<pubDate>Wed, 25 Nov 2026 10:00:00 GMT</pubDate><link>https://x/1</link></item>
+<item><title>Acme cuts full-year guidance as demand slows - Bloomberg</title><source>Bloomberg</source>
+<pubDate>Tue, 24 Nov 2026 10:00:00 GMT</pubDate><link>https://x/2</link></item>
+<item><title>Halper Sadeh LLC Investigates Acme Corp - PR Newswire</title><source>PR Newswire</source>
+<pubDate>Tue, 24 Nov 2026 09:00:00 GMT</pubDate><link>https://x/3</link></item>
+<item><title>Other company beats estimates - CNBC</title><source>CNBC</source>
+<pubDate>Tue, 24 Nov 2026 09:00:00 GMT</pubDate><link>https://x/4</link></item>
+<item><title>ACME stock old news - Old</title><source>Old</source>
+<pubDate>Mon, 02 Nov 2026 09:00:00 GMT</pubDate><link>https://x/5</link></item>
+</channel></rss>"""
+items = nt.leer_rss(RSS)
+assert items[0]["titulo"] == "Acme Corp files for Chapter 11 bankruptcy" and items[0]["fuente"] == "Reuters"
+assert nt.leer_rss("no es xml") == []
+r = nt.resumir(items, "ACME", "Acme Corp, Inc.", ahora="2026-11-26 12:00")
+assert r["total"] == 3, "Solo titulares recientes que nombran a la empresa"
+assert r["cuenta"]["grave"] == 1 and r["cuenta"]["negativa"] == 1 and r["cuenta"]["neutra"] == 1
+assert r["grave_reciente"]["titulo"].startswith("Acme Corp files") and r["destacados"][0]["tono"] == "grave"
+assert nt.resumir(items, "ACME", "Acme Corp", ahora="2026-11-30 12:00")["grave_reciente"] is None, "Grave solo si es de 3 días"
+for titulo, tono in [("XYZ shares plunge after earnings", "negativa"), ("XYZ beats estimates and raises outlook", "positiva"),
+                     ("SEC probe into XYZ accounting", "grave"), ("XYZ hits 52-week low", "negativa"),
+                     ("Shareholder alert: law firm investigates XYZ", "neutra"), ("XYZ announces new product", "neutra")]:
+    assert nt.clasificar(titulo) == tono, (titulo, nt.clasificar(titulo))
+assert nt.nombre_corto("PTC Therapeutics, Inc.") == "PTC Therapeutics" and nt.nombre_corto("H&R Block") == "H&R Block"
+print("[OK] Noticias: lectura del RSS, filtro por empresa y clasificación grave / negativa / positiva / ruido")
+
+# --- 11. Cartera reactiva: protecciones, filtros de compra y modo prudente
+reglas_r = sim.reglas_para(cfg, "reactiva")
+assert reglas_r["estilo"] == "reactiva" and reglas_r["stop_movil_pct"] == cfg["cartera_reactiva"]["stop_movil_pct"]
+ctx_ok = {"indice": {"sobre_media": True}, "cambio_dia": {"X01": -9.0}, "cambio_5d": {},
+          "noticias": {"X02": {"cuenta": {"grave": 1}, "grave_reciente": {"titulo": "X02 fraud"}},
+                       "X03": {"cuenta": {"negativa": 2, "positiva": 0}}}}
+c = Cartera(10_000, reglas_r)
+ops_r = c.rebalancear(pd.Timestamp("2026-01-05"), lista, px, ctx_ok)
+compradas = {o["ticker"] for o in ops_r if o["tipo"] == "COMPRA"}
+assert not compradas & {"X01", "X02", "X03"}, "No compra lo que se desploma hoy ni lo que tiene malas noticias"
+assert len(compradas) == 17, f"Compra el resto del top 20 ({len(compradas)})"
+# Stop móvil: X00 sube a 60 (nuevo máximo) y luego cae a 50 → −16,7 % desde el máximo
+c.actualizar_precios({**px, "X00": 60.0})
+ops_v = c.vigilar(pd.Timestamp("2026-01-06"), {**px, "X00": 50.0}, {})
+assert [o["ticker"] for o in ops_v] == ["X00"] and "Stop móvil" in ops_v[0]["motivo"]
+assert c.vetadas["X00"] == "2026-02-05", "No se recompra en 30 días"
+assert "stop móvil" in mensajes.razon_operacion(ops_v[0], None)
+# Noticia grave: solo vende si el mercado ya la castiga (−5 % en 5 sesiones)
+grave = {"noticias": {"X04": {"grave_reciente": {"titulo": "X04 under SEC investigation"}}}}
+assert c.vigilar(pd.Timestamp("2026-01-06"), px, {**grave, "cambio_5d": {"X04": -2.0}}) == []
+ops_g = c.vigilar(pd.Timestamp("2026-01-06"), px, {**grave, "cambio_5d": {"X04": -6.0}})
+assert [o["ticker"] for o in ops_g] == ["X04"] and "noticia grave" in mensajes.razon_operacion(ops_g[0], None)
+# Vetada: aunque vuelva al top 20, no se recompra hasta que pase el plazo
+ops_r = c.rebalancear(pd.Timestamp("2026-01-07"), lista, px, {"indice": {"sobre_media": True}})
+assert "X00" not in {o["ticker"] for o in ops_r if o["tipo"] == "COMPRA"}
+assert c.a_dict()["vetadas"]["X00"] and Cartera.desde_dict(c.a_dict(), reglas_r).vetadas == c.vetadas
+c.rebalancear(pd.Timestamp("2026-03-01"), lista, px, {"indice": {"sobre_media": True}})
+assert "X00" not in c.vetadas, "Los vetos caducan"
+# Modo prudente: con el índice bajo su media de 200 sesiones no compra, pero sí vende
+c2 = Cartera(10_000, reglas_r)
+assert c2.rebalancear(pd.Timestamp("2026-01-05"), lista, px, {"indice": {"sobre_media": False}}) == []
+c.posiciones["X79"] = {"acciones": 1, "precio_compra": 50.0, "fecha_compra": "2026-01-05", "inicio_periodo": "2026-01-05",
+                       "ultimo_precio": 50.0, "maximo": 50.0}
+ventas = [o for o in c.rebalancear(pd.Timestamp("2026-03-02"), lista, px, {"indice": {"sobre_media": False}}) if o["tipo"] == "VENTA"]
+assert [o["ticker"] for o in ventas] == ["X79"], "En modo prudente sigue vendiendo lo que cae del top 50"
+assert c.efectivo >= -1e-6
+
+# Integración: cartera reactiva hacia delante y vigilancia que solo guarda si vende
+sim.crear_cartera("reactiva", 10_000, cfg, "reactiva")
+ctx_vacio = {"indice": {"sobre_media": True}, "cambio_dia": {}, "cambio_5d": {}, "noticias": {}}
+_, ops_ra = sim.actualizar_cartera("reactiva", cfg, None, ctx_vacio)
+e = sim.cargar("reactiva")
+assert 0 < len(ops_ra) <= 20 and sim.es_reactiva(e) and sim.es_diaria(e) and sim.proxima_revision(e) is None
+antes = (sim.CARPETA_CARTERAS / "reactiva.json").read_text(encoding="utf-8")
+precios_e = {t: p["ultimo_precio"] for t, p in e["cartera"]["posiciones"].items()}
+assert sim.vigilar_cartera("reactiva", {"precios": precios_e, "cambio_5d": {}, "noticias": {}}) == []
+assert (sim.CARPETA_CARTERAS / "reactiva.json").read_text(encoding="utf-8") == antes, "Sin ventas no se guarda nada"
+victima = next(iter(precios_e))
+ops_vc = sim.vigilar_cartera("reactiva", {"precios": {**precios_e, victima: precios_e[victima] * 0.5}, "cambio_5d": {}, "noticias": {}})
+assert [o["ticker"] for o in ops_vc] == [victima] and victima not in sim.cargar("reactiva")["cartera"]["posiciones"]
+assert sim.cargar("reactiva")["cartera"]["operaciones"][-1]["explicacion"]
+assert sim.vigilar_cartera("principal", {"precios": {}, "cambio_5d": {}, "noticias": {}}) == [], "Solo vigila la reactiva"
+nota = mensajes.nota_posicion(next(iter(e["cartera"]["posiciones"].values())), e, {"puesto": 3})
+assert "stop móvil" in nota and "noticia grave" in nota
+# Splits: tras un 8 por 1 las acciones se multiplican y los precios se dividen, sin falsas caídas ni ventas
+c3 = Cartera(10_000, reglas_r)
+c3.posiciones["SPL"] = {"acciones": 6, "precio_compra": 640.0, "fecha_compra": "2026-11-10", "inicio_periodo": "2026-11-10",
+                        "ultimo_precio": 700.0, "maximo": 720.0}
+valor_antes = c3.valor({"SPL": 700.0})
+serie = pd.Series([8.0, 2.0], index=[pd.Timestamp("2026-11-10"), pd.Timestamp("2026-11-20")])  # el del día de compra no cuenta
+assert c3.aplicar_splits({"SPL": serie}) == ["SPL: split 2 por 1 el 2026-11-20"]
+pos = c3.posiciones["SPL"]
+assert pos["acciones"] == 12 and pos["precio_compra"] == 320.0 and pos["maximo"] == 360.0
+assert abs(c3.valor({"SPL": 350.0}) - valor_antes) < 1e-6, "El valor no cambia por el split"
+assert c3.aplicar_splits({"SPL": serie}) == [], "Cada split se aplica una sola vez"
+assert c3.vigilar(pd.Timestamp("2026-11-21"), {"SPL": 350.0}, {}) == [], "Sin falsa caída tras el split"
+ctx_split = {"precios": {}, "cambio_5d": {}, "noticias": {}, "splits": {}}
+e_r = sim.cargar("reactiva")
+t_r = next(iter(e_r["cartera"]["posiciones"]))
+e_r["cartera"]["posiciones"][t_r]["fecha_compra"] = "2026-01-01"
+sim.guardar(e_r)
+precio_r = e_r["cartera"]["posiciones"][t_r]["ultimo_precio"]
+ctx_split = {"precios": {t: p["ultimo_precio"] for t, p in e_r["cartera"]["posiciones"].items()} | {t_r: precio_r / 4},
+             "cambio_5d": {}, "noticias": {}, "splits": {t_r: pd.Series([4.0], index=[pd.Timestamp("2026-02-01")])}}
+assert sim.vigilar_cartera("reactiva", ctx_split) == [], "Un split no dispara el stop móvil"
+assert sim.cargar("reactiva")["cartera"]["posiciones"][t_r]["splits"] == ["2026-02-01"], "Y se guarda el ajuste"
+print("[OK] Cartera reactiva: stop móvil, noticias graves, filtros de compra, vetos, modo prudente, vigilancia y splits")
+
+# --- 12. Parte diario
+estados_p = [sim.cargar(n) for n in sim.listar_carteras()]
+ctx_p = {"fecha_precios": pd.Timestamp("2026-11-25"), "indice": {"cambio_dia": 0.42, "sobre_media": True},
+         "noticias": {t: nt.resumir(items, t, "Acme Corp", ahora="2026-11-26 12:00")
+                      for t in list(sim.cargar("reactiva")["cartera"]["posiciones"])[:2]},
+         "macro": [{"titulo": "La Fed & los tipos <hoy>", "fuente": "El País", "tema": "Tipos"}]}
+parte = mensajes.mensaje_parte_diario([(e, ops_vc if e["nombre"] == "reactiva" else []) for e in estados_p], ctx_p, cfg,
+                                      mensajes.info_empresas(ranking))
+html_telegram_valido(parte)
+assert "Parte del miércoles 25/11" in parte and "+0,4 % hoy" in parte and "tendencia de fondo alcista" in parte
+assert "Reactiva" in parte and "🔴 <b>Vende</b>" in parte and "Noticias de tus empresas" in parte
+assert "La Fed &amp; los tipos &lt;hoy&gt;" in parte
+sin_nada = mensajes.mensaje_parte_diario([(e, []) for e in estados_p], {"fecha_precios": T("2026-11-25")}, cfg, {})
+html_telegram_valido(sin_nada)
+assert "ninguna cartera ha comprado ni vendido" in sin_nada
+(analisis.HISTORICO / "ultimo_parte.txt").unlink(missing_ok=True)
+assert not analisis.parte_ya_enviado(T("2026-11-25"))
+analisis.marcar_parte_enviado(T("2026-11-25"))
+assert analisis.parte_ya_enviado(T("2026-11-25")) and not analisis.parte_ya_enviado(T("2026-11-27")), "Un parte por sesión"
+analisis.guardar_contexto(ctx_p)
+web.generar_panel(cfg)
+bot = _json.loads((tmp / "docs" / "bot.json").read_text(encoding="utf-8"))
+assert bot["mercado"]["sobre_media"] is True and bot["macro"][0]["titulo"].startswith("La Fed")
+reac = next(c for c in bot["carteras"] if c["nombre"] == "reactiva")
+assert reac["titulo"] == "Reactiva" and any(p["noticias"] for p in reac["posiciones"])
+print("[OK] Parte diario: mercado, carteras, movimientos, noticias y geopolítica; una vez por sesión")
 print("\nTODAS LAS PRUEBAS PASAN ✅")
 print(f"CARPETA_PANEL={ruta.parent}")

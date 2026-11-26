@@ -54,8 +54,12 @@ Cada 3 meses compra como mucho 5 empresas de las mejores y mantiene cada una un 
 🐇 <b>Semanal</b>
 Una vez por semana: compra las que entran entre las 20 mejores si tiene hueco y vende las que caen fuera de las 50 mejores o dejan de estar sanas.
 
-⚡ <b>Diaria</b>
-Igual que la semanal, pero revisa cada día. Reacciona antes, pero opera más y paga más comisiones.
+⚡ <b>Reactiva</b>
+Las reglas de la semanal, pero revisa el ranking cada día y además <b>reacciona al mercado</b>:
+• Cada hora de la sesión vigila sus empresas y vende si una cae un 15 % desde su máximo (<i>stop móvil</i>) o si sale una noticia grave que el mercado ya castiga.
+• No compra empresas con noticias graves o muy negativas, ni el día que se desploman.
+• Si el S&amp;P 500 está por debajo de su media de 200 sesiones (tendencia bajista), deja de comprar y espera.
+Reacciona antes, pero opera más y paga más comisiones.
 
 ¿Cuál funciona mejor? Eso es justo lo que queremos averiguar comparándolas durante meses.`,
 
@@ -83,7 +87,13 @@ const GLOSARIO = `❓ <b>Qué significa cada cosa</b>
 
 <b>S&amp;P 500</b>: índice de las 500 mayores empresas de EE. UU. Es la referencia: si una cartera no le gana, sería más sencillo comprar un fondo indexado.
 
-<b>Comisión</b>: lo que cobra el bróker por cada compra o venta. Las carteras ficticias pagan un 0,1 % (mínimo 1 $).`;
+<b>Comisión</b>: lo que cobra el bróker por cada compra o venta. Las carteras ficticias pagan un 0,1 % (mínimo 1 $).
+
+<b>Stop móvil</b>: protección que vende una acción si cae un porcentaje fijo (aquí, 15 %) desde el precio más alto que ha alcanzado desde que se compró. Limita pérdidas sin vender por pequeños vaivenes.
+
+<b>Media de 200 sesiones</b>: el precio medio del índice en los últimos 200 días de bolsa (unos 10 meses). Si el índice está por encima, la tendencia de fondo se considera alcista.
+
+<b>Noticias</b>: titulares de Google News clasificados automáticamente por palabras clave: 🔴 grave (fraude, quiebra, investigación oficial…), 🟠 negativa, 🟢 positiva. Es una clasificación sencilla y puede equivocarse.`;
 
 const SIN_DATOS = "😕 Ahora mismo no puedo leer los datos de las carteras. Prueba de nuevo en unos minutos.";
 
@@ -147,10 +157,11 @@ const nombreDe = (de) => [de.first_name, de.last_name].filter(Boolean).join(" ")
 function menu(d, u, env) {
   const filas = [
     [boton("💼 Carteras", "carteras"), boton("🏆 Mejores empresas", "top:0")],
-    [boton("📖 Cómo funciona", "como:0"), boton("❓ Glosario", "glosario")],
+    [boton("📰 Noticias", "noticias"), boton("📖 Cómo funciona", "como:0")],
+    [boton("❓ Glosario", "glosario")],
     [boton(u?.avisos === false ? "🔕 Avisos: desactivados" : "🔔 Avisos: activados", "avisos")],
   ];
-  if (d?.panel) filas[2].push({ text: "🌐 Panel web", url: d.panel });
+  if (d?.panel) filas[3].push({ text: "🌐 Panel web", url: d.panel });
   if (esAdmin(env, u?.id)) filas.push([boton("👥 Personas con acceso", "usuarios")]);
   const actualizado = d?.actualizado ? `\n<i>Datos del ${fecha(d.actualizado)}.</i>` : "";
   return { texto: `📋 <b>Menú</b>\n¿Qué quieres ver?${actualizado}`, botones: filas };
@@ -186,7 +197,8 @@ function cartera(d, nombre) {
   const { r, rr, delante } = resultado(c, d);
   const veredicto = delante ? "✅ Va por delante." : "🔸 Va por detrás.";
   const posiciones = c.posiciones.map((p) => `• <b>${esc(p.ticker)}</b> ${esc(p.nombre)}: ${dinero(p.valor)} (${pct(p.rent)})`);
-  const revision = c.estilo === "diaria" ? "Revisa la cartera cada día de mercado."
+  const revision = c.estilo === "reactiva" ? "Vigila sus empresas cada hora durante la sesión y revisa el ranking al cierre de cada día."
+    : c.estilo === "diaria" ? "Revisa la cartera cada día de mercado."
     : c.proxima_revision ? `Próxima revisión: ${fecha(c.proxima_revision)}.` : "";
   return {
     texto: [
@@ -211,7 +223,11 @@ function porQue(d, nombre, pagina) {
   const total = Math.max(1, Math.ceil(c.posiciones.length / porPagina));
   const p = Math.min(Math.max(0, pagina), total - 1);
   const trozo = c.posiciones.slice(p * porPagina, (p + 1) * porPagina);
-  const bloques = trozo.map((x) => `<b>${esc(x.ticker)}</b> · ${esc(x.nombre)}\n${esc(x.porque)}\n<i>${esc(x.nota)}</i>`);
+  const bloques = trozo.map((x) => {
+    const n = (x.noticias || [])[0];
+    const noticia = n ? `\n${TONOS[n.tono] || "⚪"} ${esc(n.titulo)}${n.fuente ? ` (${esc(n.fuente)})` : ""}` : "";
+    return `<b>${esc(x.ticker)}</b> · ${esc(x.nombre)}\n${esc(x.porque)}\n<i>${esc(x.nota)}</i>${noticia}`;
+  });
   const nav = [];
   if (p > 0) nav.push(boton("◀️ Anteriores", `por:${nombre}:${p - 1}`));
   if (p < total - 1) nav.push(boton("Siguientes ▶️", `por:${nombre}:${p + 1}`));
@@ -231,6 +247,36 @@ function movimientos(d, nombre) {
     texto: `🧾 <b>Últimos movimientos</b> · ${esc(c.titulo)}\n\n${bloques.join("\n\n") || "Todavía no hay movimientos."}`,
     botones: [volver(`c:${nombre}`)],
   };
+}
+
+const TONOS = { grave: "🔴", negativa: "🟠", positiva: "🟢", neutra: "⚪" };
+
+function noticiasPantalla(d) {
+  const m = d.mercado || {};
+  const lineas = [];
+  if (m.cambio_dia !== undefined && m.cambio_dia !== null) {
+    const tendencia = m.sobre_media ? "por encima de su media de 200 sesiones (tendencia alcista)"
+      : "por debajo de su media de 200 sesiones (tendencia bajista: la cartera reactiva no compra)";
+    lineas.push(`📈 <b>Mercado</b> (${fecha(m.fecha)}): ${esc(d.nombre_referencia)} ${pct(m.cambio_dia)}, ${tendencia}.`);
+  }
+  // Noticias de las empresas que tienen las carteras (sin repetir), primero las graves y negativas
+  const orden = { grave: 0, negativa: 1, positiva: 2, neutra: 3 };
+  const vistas = new Map();
+  for (const c of d.carteras) for (const p of c.posiciones) {
+    if (!vistas.has(p.ticker) && (p.noticias || []).length) vistas.set(p.ticker, p.noticias[0]);
+  }
+  const empresas = [...vistas.entries()].filter(([, n]) => n.tono !== "neutra")
+    .sort((a, b) => orden[a[1].tono] - orden[b[1].tono]).slice(0, 10)
+    .map(([t, n]) => `${TONOS[n.tono]} <b>${esc(t)}</b>: ${esc(n.titulo)}${n.fuente ? ` (${esc(n.fuente)})` : ""}`);
+  if (empresas.length) lineas.push("", "📰 <b>Tus empresas</b>", ...empresas);
+  else if (vistas.size) lineas.push("", "📰 <b>Tus empresas</b>: sin noticias destacables estos días.");
+  if ((d.macro || []).length) {
+    lineas.push("", "🌍 <b>Economía y geopolítica</b>",
+      ...d.macro.slice(0, 8).map((h) => `• ${esc(h.titulo)}${h.fuente ? ` (${esc(h.fuente)})` : ""}`));
+  }
+  if (!lineas.length) lineas.push("Todavía no hay noticias. Aparecerán tras el próximo parte diario.");
+  lineas.push("", "<i>🔴 grave · 🟠 negativa · 🟢 positiva. Clasificación automática por palabras clave: puede equivocarse.</i>");
+  return { texto: `📰 <b>Noticias</b>\n\n${lineas.join("\n")}`, botones: [volver()] };
 }
 
 function todas(d) {
@@ -295,6 +341,7 @@ async function pantalla(accion, env, u) {
   if (tipo === "por") return porQue(d, a, Number(b) || 0);
   if (tipo === "mov") return movimientos(d, a);
   if (tipo === "todas") return todas(d);
+  if (tipo === "noticias") return noticiasPantalla(d);
   if (tipo === "top") return mejores(d, Number(a) || 0);
   return menu(d, u, env);
 }

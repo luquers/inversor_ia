@@ -198,11 +198,18 @@ def descargar_precios(tickers, inicio=None, fin=None, periodo: str = "10d"):
         opciones["period"] = periodo
 
     cierres, ajustados, splits = [], [], {}
-    for i in range(0, len(tickers), 100):
-        lote = tickers[i:i + 100]
-        df = _descargar_lote(yf, lote, opciones)
+    lotes = [tickers[i:i + 100] for i in range(0, len(tickers), 100)]
+    reintentados = set()
+    while lotes:
+        lote = lotes.pop(0)
+        df = _descargar_lote(yf, lote, opciones if len(lote) > 1 else {**opciones, "threads": False})
         if df is None:
             continue
+        if len(lote) > 1 and "Close" in df.columns.get_level_values(0):
+            # Yahoo a veces falla con algún valor suelto («database is locked»): se reintenta solo
+            fallidos = [t for t in lote if t not in df["Close"].columns or df["Close"][t].isna().all()]
+            lotes += [[t] for t in fallidos if t not in reintentados]
+            reintentados |= set(fallidos)
         niveles = df.columns.get_level_values(0)
         c = df["Close"]
         a = df["Adj Close"] if "Adj Close" in niveles else c

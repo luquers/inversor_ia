@@ -106,7 +106,7 @@ El bot lee las carteras de `docs/bot.json`, que se publica en cada ejecución. P
    - Crea una clave compartida y guárdala en los dos sitios:
      `S=$(openssl rand -hex 32); printf %s "$S" | npx wrangler@4 secret put BOT_SECRET && gh secret set BOT_SECRET --body "$S"`
 5. En GitHub, crea el secreto `BOT_URL` con la dirección del paso 3.
-6. Abre `https://inversor-bot.<algo>.workers.dev/configurar` para conectar el bot con Telegram.
+6. Espera un minuto (los secretos tardan unos segundos en activarse) y abre `https://inversor-bot.<algo>.workers.dev/configurar` para conectar el bot con Telegram. Si después el bot no contesta a `/start`, vuelve a abrir esa dirección.
 
 Para comprobar el bot sin internet: `node bot/prueba_bot.mjs`.
 
@@ -114,15 +114,31 @@ Para comprobar el bot sin internet: `node bot/prueba_bot.mjs`.
 
 Puedes crear varias con nombres distintos. Las reglas de `config.yaml` se congelan en cada cartera al crearla, así que para comparar estrategias: cambia `config.yaml`, crea otra cartera, y el panel te dejará cambiar entre ellas.
 
-### Carteras semanal y diaria
+### Estilos de cartera
 
 Al crear una cartera puedes elegir el **estilo**:
 
 - **trimestral** (por defecto): las reglas de Greenblatt. Revisa cada 3 meses y mantiene cada acción un año.
-- **diaria**: revisa cada día de mercado. Compra las empresas que están entre las 20 mejores si hay hueco y vende en cuanto una cae fuera de las 50 mejores o deja de pasar el F-Score. Ajusta estos límites en `cartera_diaria` dentro de `config.yaml`.
-- **semanal**: las mismas reglas que la diaria, pero revisa una vez cada 7 días (`cartera_semanal`). Opera menos y paga menos comisiones.
+- **semanal**: revisa una vez cada 7 días. Compra las empresas que están entre las 20 mejores si hay hueco y vende en cuanto una cae fuera de las 50 mejores o deja de pasar el F-Score (`cartera_semanal`).
+- **diaria**: lo mismo, pero cada día de mercado (`cartera_diaria`).
+- **reactiva**: las reglas de la diaria y además reacciona al mercado y a las noticias (`cartera_reactiva`):
+  - **Cada hora durante la sesión** vigila sus empresas y vende si una cae un 15 % desde su máximo desde la compra (*stop móvil*), o si sale una noticia grave (fraude, quiebra, investigación oficial…) que el mercado ya castiga con una caída del 5 % en 5 sesiones.
+  - No compra empresas con noticias graves o varias negativas recientes, ni el día que caen un 7 % o más.
+  - No compra nada si el índice está por debajo de su media de 200 sesiones (tendencia bajista).
+  - Lo que vende por protección no lo recompra en 30 días.
 
-Créalas con **Actions → Acciones manuales → Run workflow → Crear cartera ficticia**, poniendo como nombre y estilo `semanal` o `diaria`. Pueden convivir con la trimestral y compararse en el panel. Ten en cuenta que opera mucho más y que cada operación paga comisión. La simulación del pasado sigue usando las reglas trimestrales.
+Créalas con **Actions → Acciones manuales → Run workflow → Crear cartera ficticia**, eligiendo nombre y estilo. Pueden convivir y compararse en el panel. Cuanto más activa es una cartera, más opera y más comisiones paga. La simulación del pasado usa siempre las reglas trimestrales, porque no hay noticias históricas gratuitas con las que simular la reactiva.
+
+### Noticias y parte diario
+
+Cada día de mercado el bot envía un **parte diario** con:
+- cómo ha ido el índice y su tendencia;
+- cómo van las carteras hoy y desde el inicio;
+- las compras y ventas, con su porqué;
+- las noticias destacadas de las empresas que tienes;
+- titulares de economía y geopolítica en español.
+
+Las noticias salen de **Google News (RSS, gratuito)** y se clasifican con reglas de palabras clave (🔴 grave, 🟠 negativa, 🟢 positiva). No se usa ninguna IA ni servicio de pago. Es una clasificación sencilla que puede equivocarse, y por eso solo provoca ventas cuando el precio confirma la noticia.
 
 ---
 

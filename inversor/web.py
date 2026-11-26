@@ -89,6 +89,13 @@ def datos_bot(cfg):
     tenidas = [t for e in estados for t in e["cartera"]["posiciones"]]
     info = mensajes.info_empresas(ranking, extra=tenidas, top=30)
     ref = mensajes.nombre_referencia(cfg)
+    ruta_ctx = HISTORICO / "contexto.json"
+    ctx = json.loads(ruta_ctx.read_text(encoding="utf-8")) if ruta_ctx.exists() else {}
+    noticias = ctx.get("noticias") or {}
+
+    def noticias_de(t):
+        return [{"titulo": h["titulo"], "fuente": h.get("fuente", ""), "fecha": h.get("fecha", ""), "tono": h["tono"]}
+                for h in (noticias.get(t) or {}).get("destacados", [])]
 
     carteras = []
     for e in estados:
@@ -107,6 +114,7 @@ def datos_bot(cfg):
                 "rent": round((p["ultimo_precio"] / p["precio_compra"] - 1) * 100, 2),
                 "porque": mensajes.explicar_empresa(info.get(t), fmin),
                 "nota": mensajes.nota_posicion(p, e, info.get(t)),
+                "noticias": noticias_de(t),
             } for t, p in c["posiciones"].items()), key=lambda x: -x["valor"]),
             "operaciones": [{
                 "fecha": o["fecha"], "tipo": o["tipo"], "ticker": o["ticker"],
@@ -124,6 +132,9 @@ def datos_bot(cfg):
         "fecha_ranking": fecha_ranking, "referencia": cfg["referencia"], "nombre_referencia": ref,
         "fscore_minimo": fmin, "panel": (cfg.get("web") or {}).get("url_panel") or "",
         "carteras": carteras, "top": top,
+        "mercado": {"fecha": ctx.get("fecha", ""), **(ctx.get("indice") or {})},
+        "macro": [{"titulo": h["titulo"], "fuente": h.get("fuente", ""), "tema": h.get("tema", "")}
+                  for h in ctx.get("macro") or []],
         "avisos": avisos_vigilancia(ranking, cfg, tenidas) if ranking is not None else [],
     }
 

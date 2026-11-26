@@ -8,21 +8,22 @@ Comandos:
   python main.py estado [--nombre prueba]      Cómo va tu cartera simulada
   python main.py actualizar [--nombre prueba]  Avanza la cartera simulada a hoy
   python main.py pasado [--inicio 2012-01-01]  Cómo te habría ido en el pasado
-  python main.py diario                        Tarea automática diaria (+ alertas)
+  python main.py diario                        Tarea automática diaria (+ parte diario y alertas)
+  python main.py vigilar                       Vigilancia durante la sesión (cartera reactiva)
   python main.py panel                         Regenera el panel web (docs/index.html)
 """
 import argparse
 import sys
 
-import pandas as pd
 import yaml
 
-from inversor.analisis import (avisos_vigilancia, cambios_top, enviar_alerta, guardar_ranking,
-                               ranking_actual, tabla_texto)
-from inversor import mensajes
+from inversor.analisis import (avisos_vigilancia, cambios_top, enviar_alerta, guardar_contexto, guardar_ranking,
+                               marcar_informe_enviado, marcar_parte_enviado, parte_ya_enviado, ranking_actual,
+                               tabla_texto, toca_informe_semanal)
+from inversor import mensajes, mercado
 from inversor.datos import RAIZ
 from inversor import simulacion as sim
-from inversor.web import generar_panel
+from inversor.web import _ranking_guardado, generar_panel
 
 
 def cargar_config():
@@ -88,33 +89,88 @@ def cmd_pasado(cfg, args):
     actualizar_panel(cfg)
 
 
+def _nombres_empresas(ranking, tickers):
+    """{ticker: nombre} para buscar noticias (si no hay ranking de hoy, el último guardado)."""
+    if ranking is None:
+        ranking, _ = _ranking_guardado()
+    nombres = ranking["nombre"].to_dict() if ranking is not None and "nombre" in ranking else {}
+    return {t: nombres.get(t) if isinstance(nombres.get(t), str) else t for t in tickers}
+
+
+def _contexto(cfg, ranking, tickers, macro):
+    """Precios, tendencia y noticias. Si algo falla se sigue sin ello (la reactiva pierde sus filtros)."""
+    try:
+        return mercado.contexto(tickers, cfg["referencia"], _nombres_empresas(ranking, tickers),
+                                con_noticias=True, macro=macro)
+    except Exception as e:
+        print(f"No se pudo preparar el contexto de mercado: {e}")
+        return None
+
+
 def cmd_diario(cfg, args):
-    hoy = pd.Timestamp.today()
-    hay_informe = args.forzar_informe or hoy.weekday() == cfg["alertas"]["dia_informe"]
+    toca_informe = toca_informe_semanal(cfg["alertas"]["dia_informe"])
+    hay_informe = args.forzar_informe or toca_informe
     carteras = sim.listar_carteras()
-    necesita_ranking = hay_informe or any(sim.toca_rebalancear(sim.cargar(n)) for n in carteras)
+    estados = [sim.cargar(n) for n in carteras]
+    necesita_ranking = hay_informe or any(sim.toca_rebalancear(e) for e in estados)
     ranking = ranking_actual(cfg) if necesita_ranking else None
+
+    # Contexto: empresas que se tienen + las 30 mejores (posibles compras de la reactiva)
+    tenidas = {t for e in estados for t in e["cartera"]["posiciones"]}
+    mejores = ranking[ranking["apto"]].head(30).index.tolist() if ranking is not None else []
+    ctx = _contexto(cfg, ranking, tenidas | set(mejores), macro=True)
 
     resultados, vigiladas = [], list(cfg["alertas"].get("mis_acciones") or [])
     for nombre in carteras:
-        estado, ops = sim.actualizar_cartera(nombre, cfg, ranking)
+        estado, ops = sim.actualizar_cartera(nombre, cfg, ranking, ctx)
         resultados.append((estado, ops))
         vigiladas += list(estado["cartera"]["posiciones"])
         print(sim.describir_cartera(estado, ops) + "\n")
 
+    info = mensajes.info_empresas(ranking if ranking is not None else _ranking_guardado()[0], extra=vigiladas)
     avisar = []
+    fecha_mercado = ctx["fecha_precios"] if ctx else None
+    parte = ctx is not None and not parte_ya_enviado(fecha_mercado)
+    if parte:
+        avisar.append(mensajes.mensaje_parte_diario(resultados, ctx, cfg, info))
+    elif any(ops for _, ops in resultados):
+        avisar.append(mensajes.mensaje_novedades([(e, o) for e, o in resultados if o], info, cfg))
+    else:
+        print("Hoy no hay parte: el mercado no ha abierto desde el último (festivo o fin de semana).")
     if hay_informe:
         cambios = cambios_top(ranking, cfg["alertas"]["top_informe"])
         avisos = avisos_vigilancia(ranking, cfg, vigiladas)
         avisar.append(mensajes.mensaje_semanal([e for e, _ in resultados], ranking, cfg, cambios, avisos))
-    con_movimientos = [(e, ops) for e, ops in resultados if ops]
-    if con_movimientos:
-        info = mensajes.info_empresas(ranking, extra=vigiladas)
-        avisar.append(mensajes.mensaje_novedades(con_movimientos, info, cfg))
     for texto in avisar:
         enviar_alerta(texto)
-    if not avisar:
-        print("Hoy no hay novedades.")
+    if parte:
+        marcar_parte_enviado(fecha_mercado)
+    if toca_informe:
+        marcar_informe_enviado()
+    guardar_contexto(ctx)
+    actualizar_panel(cfg)
+
+
+def cmd_vigilar(cfg, args):
+    """Durante la sesión: la cartera reactiva comprueba sus protecciones (stop móvil y noticias graves)."""
+    reactivas = [n for n in sim.listar_carteras() if sim.es_reactiva(sim.cargar(n))]
+    tenidas = {t for n in reactivas for t in sim.cargar(n)["cartera"]["posiciones"]}
+    if not tenidas:
+        print("No hay ninguna cartera reactiva con empresas que vigilar.")
+        return
+    ctx = _contexto(cfg, None, tenidas, macro=False)
+    if ctx is None:
+        return
+    items = []
+    for nombre in reactivas:
+        ops = sim.vigilar_cartera(nombre, ctx)
+        if ops:
+            items.append((sim.cargar(nombre), ops))
+    if not items:
+        print("Vigilancia sin novedades: ninguna protección ha saltado.")
+        return
+    info = mensajes.info_empresas(_ranking_guardado()[0], extra=tenidas)
+    enviar_alerta(mensajes.mensaje_novedades(items, info, cfg))
     actualizar_panel(cfg)
 
 
@@ -153,6 +209,9 @@ def main():
 
     s = sub.add_parser("panel", help="Regenera el panel web")
     s.set_defaults(func=cmd_panel)
+
+    s = sub.add_parser("vigilar", help="Durante la sesión: protecciones de la cartera reactiva")
+    s.set_defaults(func=cmd_vigilar)
 
     s = sub.add_parser("diario", help="Tarea diaria: actualiza carteras y envía alertas")
     s.add_argument("--forzar-informe", action="store_true")

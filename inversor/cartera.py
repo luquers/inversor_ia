@@ -11,12 +11,14 @@ def _precio_valido(p):
 
 
 class Cartera:
-    def __init__(self, efectivo, reglas, posiciones=None, operaciones=None):
+    def __init__(self, efectivo, reglas, posiciones=None, operaciones=None, vetadas=None):
         self.efectivo = float(efectivo)
         self.reglas = reglas
-        # ticker -> {acciones, precio_compra, fecha_compra, inicio_periodo, ultimo_precio}
+        # ticker -> {acciones, precio_compra, fecha_compra, inicio_periodo, ultimo_precio, maximo}
         self.posiciones = posiciones or {}
         self.operaciones = operaciones or []
+        # ticker -> fecha hasta la que no se vuelve a comprar (tras vender por protección)
+        self.vetadas = vetadas or {}
 
     # ------------------------------------------------------------ utilidades
     def _comision(self, importe):
@@ -24,10 +26,35 @@ class Cartera:
             return 0.0
         return max(importe * self.reglas["comision_pct"], self.reglas["comision_minima"])
 
+    def aplicar_splits(self, splits: dict) -> list[str]:
+        """Si una empresa que se tiene hace un split (p. ej. 8 por 1), Yahoo reescribe todo su historial
+        de precios dividido entre 8: aquí se multiplican las acciones y se dividen los precios guardados.
+        Solo cuentan los splits posteriores a la compra y cada uno se aplica una vez."""
+        notas = []
+        for t, pos in self.posiciones.items():
+            serie = splits.get(t)
+            if serie is None or not len(serie):
+                continue
+            hechos = set(pos.get("splits", []))
+            for fecha, ratio in serie.items():
+                dia = str(pd.Timestamp(fecha).date())
+                if dia <= pos["fecha_compra"] or dia in hechos or not ratio or ratio == 1:
+                    continue
+                pos["acciones"] = pos["acciones"] * ratio
+                for campo in ("precio_compra", "ultimo_precio", "maximo"):
+                    if campo in pos:
+                        pos[campo] = pos[campo] / ratio
+                hechos.add(dia)
+                notas.append(f"{t}: split {ratio:g} por 1 el {dia}")
+            if hechos:
+                pos["splits"] = sorted(hechos)
+        return notas
+
     def actualizar_precios(self, precios: dict):
         for t, pos in self.posiciones.items():
             if _precio_valido(precios.get(t)):
                 pos["ultimo_precio"] = float(precios[t])
+                pos["maximo"] = max(pos.get("maximo", pos["precio_compra"]), pos["ultimo_precio"])
 
     def _precio(self, t, precios):
         p = precios.get(t)
@@ -64,7 +91,7 @@ class Cartera:
         fecha_txt = str(pd.Timestamp(fecha).date())
         self.posiciones[ticker] = {
             "acciones": acciones, "precio_compra": float(precio), "fecha_compra": fecha_txt,
-            "inicio_periodo": fecha_txt, "ultimo_precio": float(precio),
+            "inicio_periodo": fecha_txt, "ultimo_precio": float(precio), "maximo": float(precio),
         }
         op = {
             "fecha": fecha_txt, "tipo": "COMPRA", "ticker": ticker, "acciones": acciones,
@@ -75,13 +102,73 @@ class Cartera:
         return op
 
     # ------------------------------------------------------------ la regla
-    def rebalancear(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
-        if self.reglas.get("estilo") in ("diaria", "semanal"):
+    def rebalancear(self, fecha, candidatos: list[str], precios: dict, ctx: dict | None = None) -> list[dict]:
+        estilo = self.reglas.get("estilo")
+        if estilo == "reactiva":
+            return self._rebalancear_reactivo(fecha, candidatos, precios, ctx or {})
+        if estilo in ("diaria", "semanal"):
             return self._rebalancear_por_ranking(fecha, candidatos, precios)
         return self._rebalancear_periodico(fecha, candidatos, precios)
 
-    def _rebalancear_por_ranking(self, fecha, candidatos: list[str], precios: dict) -> list[dict]:
-        """Estilos diaria y semanal (solo cambia cada cuánto se llama).
+    # ------------------------------------------------------------ cartera reactiva
+    def vigilar(self, fecha, precios: dict, ctx: dict) -> list[dict]:
+        """Protecciones que se comprueban varias veces al día (cartera reactiva):
+        - stop móvil: vende si cae `stop_movil_pct` % desde su máximo desde la compra
+        - noticia grave reciente que el mercado ya castiga (cae `caida_noticia_pct` % en 5 sesiones)
+        """
+        r = self.reglas
+        fecha = pd.Timestamp(fecha)
+        self.actualizar_precios(precios)
+        nuevas_ops = []
+        veto_hasta = str((fecha + pd.Timedelta(days=r.get("vetar_dias", 30))).date())
+        for t in list(self.posiciones):
+            pos = self.posiciones[t]
+            precio = self._precio(t, precios)
+            maximo = pos.get("maximo", pos["precio_compra"])
+            caida = (1 - precio / maximo) * 100 if maximo else 0
+            motivo = None
+            if caida >= r.get("stop_movil_pct", 15):
+                motivo = f"Stop móvil: cae un {caida:.0f} % desde su máximo de {maximo:.2f}"
+            elif r.get("noticias", True):
+                grave = ((ctx.get("noticias") or {}).get(t) or {}).get("grave_reciente")
+                cambio_5d = (ctx.get("cambio_5d") or {}).get(t)
+                if grave and cambio_5d is not None and cambio_5d <= -r.get("caida_noticia_pct", 5):
+                    motivo = f"Noticia grave y caída del {abs(cambio_5d):.0f} % en 5 sesiones: «{grave['titulo'][:120]}»"
+            if motivo:
+                nuevas_ops.append(self.vender(t, precio, fecha, motivo))
+                self.vetadas[t] = veto_hasta
+        return nuevas_ops
+
+    def _motivo_para_no_comprar(self, t, fecha, ctx) -> str | None:
+        r = self.reglas
+        if self.vetadas.get(t) and str(pd.Timestamp(fecha).date()) <= self.vetadas[t]:
+            return "vendida hace poco por protección"
+        cambio = (ctx.get("cambio_dia") or {}).get(t)
+        if cambio is not None and cambio <= -r.get("caida_brusca_pct", 7):
+            return f"cae un {abs(cambio):.0f} % hoy"
+        if r.get("noticias", True):
+            cuenta = (((ctx.get("noticias") or {}).get(t) or {}).get("cuenta") or {})
+            if cuenta.get("grave", 0) > 0:
+                return "tiene noticias graves recientes"
+            if cuenta.get("negativa", 0) >= 2 and cuenta.get("negativa", 0) > cuenta.get("positiva", 0):
+                return "acumula noticias negativas"
+        return None
+
+    def _rebalancear_reactivo(self, fecha, candidatos: list[str], precios: dict, ctx: dict) -> list[dict]:
+        """Protecciones + reglas del ranking + filtros antes de comprar (noticias, caídas, mercado)."""
+        nuevas_ops = self.vigilar(fecha, precios, ctx)
+        prudente = self.reglas.get("filtro_mercado", True) and not (ctx.get("indice") or {}).get("sobre_media", True)
+        nuevas_ops += self._rebalancear_por_ranking(
+            fecha, candidatos, precios, sin_compras=prudente,
+            filtro_compra=lambda t: self._motivo_para_no_comprar(t, fecha, ctx) is None)
+        # Los vetos caducados se olvidan
+        hoy = str(pd.Timestamp(fecha).date())
+        self.vetadas = {t: h for t, h in self.vetadas.items() if h >= hoy}
+        return nuevas_ops
+
+    def _rebalancear_por_ranking(self, fecha, candidatos: list[str], precios: dict,
+                                 sin_compras=False, filtro_compra=None) -> list[dict]:
+        """Estilos diaria, semanal y reactiva (solo cambia cada cuánto se llama y los filtros).
         1. Vende lo que ha caído fuera de las `vender_fuera_del_top` mejores (o ya no pasa el F-Score).
         2. Compra las que están entre las `num_posiciones` mejores y no tiene, si hay hueco.
         """
@@ -106,13 +193,15 @@ class Cartera:
                 continue
             nuevas_ops.append(self.vender(t, self._precio(t, precios), fecha, motivo))
 
-        por_comprar = min(top_n - len(self.posiciones), r["compras_por_tanda"])
+        por_comprar = 0 if sin_compras else min(top_n - len(self.posiciones), r["compras_por_tanda"])
         if por_comprar > 0:
             objetivo = self.valor(precios) / top_n
             for p, t in enumerate(candidatos[:top_n], 1):
                 if por_comprar == 0 or self.efectivo <= 0:
                     break
                 if t in self.posiciones or not _precio_valido(precios.get(t)):
+                    continue
+                if filtro_compra is not None and not filtro_compra(t):
                     continue
                 op = self.comprar(t, objetivo, float(precios[t]), fecha, f"Entra en el puesto {p} del ranking")
                 if op:
@@ -165,8 +254,11 @@ class Cartera:
 
     # ------------------------------------------------------------ guardar/cargar
     def a_dict(self):
-        return {"efectivo": self.efectivo, "posiciones": self.posiciones, "operaciones": self.operaciones}
+        d = {"efectivo": self.efectivo, "posiciones": self.posiciones, "operaciones": self.operaciones}
+        if self.vetadas:
+            d["vetadas"] = self.vetadas
+        return d
 
     @classmethod
     def desde_dict(cls, d, reglas):
-        return cls(d["efectivo"], reglas, d.get("posiciones"), d.get("operaciones"))
+        return cls(d["efectivo"], reglas, d.get("posiciones"), d.get("operaciones"), d.get("vetadas"))
