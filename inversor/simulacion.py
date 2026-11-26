@@ -142,8 +142,13 @@ def actualizar_cartera(nombre, cfg, ranking=None, ctx=None):
         estado["ultimo_rebalanceo"] = str(hoy.date())
         # Se guarda el porqué de cada operación con los datos de hoy, para el bot y el panel
         info = mensajes.info_empresas(ranking, extra=[op["ticker"] for op in operaciones])
+        ajustes = (ctx or {}).get("ajustes") or {} if es_reactiva(estado) else {}
         for op in operaciones:
-            op["explicacion"] = mensajes.razon_operacion(op, info.get(op["ticker"]), estado["fscore_minimo"])
+            e = info.get(op["ticker"])
+            op["explicacion"] = mensajes.razon_operacion(op, e, estado["fscore_minimo"])
+            extra = mensajes.texto_ajuste(ajustes.get(op["ticker"]), (e or {}).get("puesto"))
+            if extra:
+                op["explicacion"] += " " + extra
 
     if estado["precio_referencia_inicio"] is None:
         estado["precio_referencia_inicio"] = precios.get(ref)

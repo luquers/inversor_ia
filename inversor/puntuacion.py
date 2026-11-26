@@ -106,7 +106,8 @@ def evaluar(universo: pd.DataFrame, tablas: dict, capitalizaciones: dict, fecha_
         t = emp["ticker"]
         m = metricas_empresa(tablas.get(t), capitalizaciones.get(t), fecha_corte)
         if m:
-            filas.append({"ticker": t, "nombre": emp.get("nombre", ""), "sector": emp.get("sector", ""), **m})
+            filas.append({"ticker": t, "nombre": emp.get("nombre", ""), "sector": emp.get("sector", ""),
+                          "subsector": emp.get("subsector", ""), **m})
     if not filas:
         return pd.DataFrame(columns=["ticker"]).set_index("ticker")
     return pd.DataFrame(filas).set_index("ticker")

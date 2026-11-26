@@ -8,16 +8,12 @@ import pandas as pd
 from .analisis import HISTORICO, avisos_vigilancia
 from .datos import RAIZ
 from . import mensajes
+from .noticias import afecta
 from . import simulacion as sim
 
 DOCS = RAIZ / "docs"
 
-SECTORES = {
-    "Industrials": "Industria", "Information Technology": "Tecnología", "Health Care": "Salud",
-    "Consumer Discretionary": "Consumo discrecional", "Consumer Staples": "Consumo básico",
-    "Energy": "Energía", "Materials": "Materiales", "Communication Services": "Comunicaciones",
-    "Real Estate": "Inmobiliario", "Financials": "Finanzas", "Utilities": "Servicios públicos",
-}
+SECTORES = mensajes.SECTORES
 NOMBRES_REFERENCIA = {"SPY": "el S&P 500", "VOO": "el S&P 500", "IVV": "el S&P 500", "QQQ": "el Nasdaq 100"}
 
 
@@ -92,10 +88,18 @@ def datos_bot(cfg):
     ruta_ctx = HISTORICO / "contexto.json"
     ctx = json.loads(ruta_ctx.read_text(encoding="utf-8")) if ruta_ctx.exists() else {}
     noticias = ctx.get("noticias") or {}
+    ajustes = ctx.get("ajustes") or {}
 
     def noticias_de(t):
-        return [{"titulo": h["titulo"], "fuente": h.get("fuente", ""), "fecha": h.get("fecha", ""), "tono": h["tono"]}
+        return [{"titulo": h.get("titulo_es") or h["titulo"], "original": h["titulo"], "fuente": h.get("fuente", ""),
+                 "fecha": h.get("fecha", ""), "tono": h["tono"], "significa": h.get("significa", "")}
                 for h in (noticias.get(t) or {}).get("destacados", [])]
+
+    def ajuste_de(t, e):
+        """Solo la cartera reactiva usa noticias y geopolítica para decidir."""
+        if not sim.es_reactiva(e):
+            return ""
+        return mensajes.texto_ajuste(ajustes.get(t), (info.get(t) or {}).get("puesto"))
 
     carteras = []
     for e in estados:
@@ -114,6 +118,7 @@ def datos_bot(cfg):
                 "rent": round((p["ultimo_precio"] / p["precio_compra"] - 1) * 100, 2),
                 "porque": mensajes.explicar_empresa(info.get(t), fmin),
                 "nota": mensajes.nota_posicion(p, e, info.get(t)),
+                "ajuste": ajuste_de(t, e),
                 "noticias": noticias_de(t),
             } for t, p in c["posiciones"].items()), key=lambda x: -x["valor"]),
             "operaciones": [{
@@ -126,12 +131,23 @@ def datos_bot(cfg):
     top = []
     for t, emp in sorted(((t, x) for t, x in info.items() if x["puesto"]), key=lambda tx: tx[1]["puesto"])[:20]:
         top.append({"ticker": t, "nombre": emp["nombre"], "puesto": emp["puesto"],
-                    "porque": mensajes.explicar_empresa(emp, fmin)})
+                    "porque": mensajes.explicar_empresa(emp, fmin),
+                    "ajuste": mensajes.texto_ajuste(ajustes.get(t), emp["puesto"]),
+                    "noticias": noticias_de(t)[:1]})
+    temas = []
+    for x in ctx.get("temas") or []:
+        afectadas = sorted({t for t in tenidas if afecta(x, (info.get(t) or {}).get("subsector", ""))})
+        temas.append({"tema": x["tema"], "porque": x["porque"], "titulares": x["titulares"],
+                      "habitual": x.get("habitual"),
+                      "favorece": [grupo for _, v, grupo in x["efectos"] if v > 0],
+                      "perjudica": [grupo for _, v, grupo in x["efectos"] if v < 0],
+                      "afectadas": afectadas})
     return {
         "actualizado": pd.Timestamp.now().strftime("%Y-%m-%dT%H:%M"),
         "fecha_ranking": fecha_ranking, "referencia": cfg["referencia"], "nombre_referencia": ref,
         "fscore_minimo": fmin, "panel": (cfg.get("web") or {}).get("url_panel") or "",
-        "carteras": carteras, "top": top,
+        "carteras": carteras, "top": top, "temas": temas,
+        "n_aptas": next((x["de"] for x in info.values() if x.get("de")), 0),
         "mercado": {"fecha": ctx.get("fecha", ""), **(ctx.get("indice") or {})},
         "macro": [{"titulo": h["titulo"], "fuente": h.get("fuente", ""), "tema": h.get("tema", "")}
                   for h in ctx.get("macro") or []],

@@ -158,6 +158,11 @@ class Cartera:
         """Protecciones + reglas del ranking + filtros antes de comprar (noticias, caídas, mercado)."""
         nuevas_ops = self.vigilar(fecha, precios, ctx)
         prudente = self.reglas.get("filtro_mercado", True) and not (ctx.get("indice") or {}).get("sobre_media", True)
+        ajustes = ctx.get("ajustes") or {}
+        if ajustes and self.reglas.get("noticias", True):
+            # Ranking ajustado: las noticias y la geopolítica suben o bajan puestos (ver mercado.calcular_ajustes)
+            base = {t: i for i, t in enumerate(candidatos, 1)}
+            candidatos = sorted(candidatos, key=lambda t: (base[t] - (ajustes.get(t) or {}).get("puestos", 0), base[t]))
         nuevas_ops += self._rebalancear_por_ranking(
             fecha, candidatos, precios, sin_compras=prudente,
             filtro_compra=lambda t: self._motivo_para_no_comprar(t, fecha, ctx) is None)

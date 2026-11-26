@@ -21,6 +21,12 @@ ESTILOS = {
     "diaria": ("Diaria", "revisa cada día según el ranking"),
     "reactiva": ("Reactiva", "vigila el mercado y las noticias varias veces al día y se protege de las caídas"),
 }
+SECTORES = {
+    "Industrials": "Industria", "Information Technology": "Tecnología", "Health Care": "Salud",
+    "Consumer Discretionary": "Consumo discrecional", "Consumer Staples": "Consumo básico",
+    "Energy": "Energía", "Materials": "Materiales", "Communication Services": "Comunicaciones",
+    "Real Estate": "Inmobiliario", "Financials": "Finanzas", "Utilities": "Servicios públicos",
+}
 NOMBRES_REFERENCIA = {"SPY": "el S&P 500", "VOO": "el S&P 500", "IVV": "el S&P 500", "QQQ": "el Nasdaq 100"}
 
 
@@ -84,7 +90,9 @@ def info_empresas(ranking: pd.DataFrame | None, extra=(), top=50) -> dict:
         valor = lambda col: None if col not in f or pd.isna(f[col]) else float(f[col])  # noqa: E731
         info[t] = {
             "nombre": f["nombre"] if isinstance(f.get("nombre"), str) else "",
-            "puesto": puesto.get(t),
+            "sector": f["sector"] if isinstance(f.get("sector"), str) else "",
+            "subsector": f["subsector"] if isinstance(f.get("subsector"), str) else "",
+            "puesto": puesto.get(t), "de": len(aptos),
             "barata": None if valor("rend_beneficios") is None else round(valor("rend_beneficios") * 100, 1),
             "rentable": None if valor("rend_capital") is None else round(valor("rend_capital") * 100),
             "fscore": None if valor("fscore") is None else int(valor("fscore")),
@@ -151,7 +159,8 @@ def nota_posicion(pos: dict, estado: dict, e: dict | None) -> str:
     """Qué tiene que pasar para que se venda."""
     reglas = estado["reglas"]
     puesto = (e or {}).get("puesto")
-    ahora = f"Ahora es la n.º {puesto} del ranking. " if puesto else ""
+    de = f" de {num((e or {}).get('de'))} empresas que pasan los filtros" if (e or {}).get("de") else " del ranking"
+    ahora = f"Ahora es la n.º {puesto}{de}. " if puesto else ""
     if estilo(estado) == "trimestral":
         hasta = pd.Timestamp(pos.get("inicio_periodo", pos["fecha_compra"])) + pd.Timedelta(days=reglas["mantener_dias"])
         return f"{ahora}Se mantiene al menos hasta el {fecha_larga(hasta)}."
@@ -211,7 +220,28 @@ def _cambio_del_dia(estado):
 def linea_noticia(t, h):
     from .noticias import TONOS
     fuente = f" ({escape(h['fuente'])})" if h.get("fuente") else ""
-    return f"{TONOS[h['tono']]} <b>{escape(t)}</b>: {escape(h['titulo'])}{fuente}"
+    significa = f"\n   <i>→ {escape(h['significa'])}</i>" if h.get("significa") else ""
+    return f"{TONOS[h['tono']]} <b>{escape(t)}</b>: {escape(h.get('titulo_es') or h['titulo'])}{fuente}{significa}"
+
+
+def texto_ajuste(aj: dict | None, puesto=None) -> str:
+    """Cómo mueven las noticias y la geopolítica a una empresa en el ranking (cartera reactiva)."""
+    if not aj or not (aj.get("noticias") or aj.get("macro")):
+        return ""
+    partes = []
+    if aj.get("noticias"):
+        n = aj["noticias"] * 5
+        porque = f" ({', '.join(aj['frases'])})" if aj.get("frases") else ""
+        partes.append(f"sus noticias la {'suben' if n > 0 else 'bajan'} {abs(n)} puestos{porque}")
+    if aj.get("macro"):
+        n = aj["macro"] * 5
+        temas = "; ".join(f"{t['tema'].lower()}, que {t['porque']}" for t in aj.get("temas", []) if t["efecto"] * n > 0)
+        partes.append(f"la economía y la geopolítica la {'suben' if n > 0 else 'bajan'} {abs(n)} puestos ({temas})")
+    frase = " y ".join(partes)
+    final = ""
+    if puesto:
+        final = f" Por la fórmula sola sería la n.º {puesto}; con el ajuste queda en la {max(1, puesto - aj['puestos'])}."
+    return f"Además, {frase}.{final}"
 
 
 def mensaje_parte_diario(items, ctx: dict, cfg: dict, info: dict, max_ops=6, max_noticias=6) -> str:
@@ -261,6 +291,20 @@ def mensaje_parte_diario(items, ctx: dict, cfg: dict, info: dict, max_ops=6, max
         partes += [linea_noticia(t, h) for t, h in destacadas[:max_noticias]]
         partes.append("<i>🔴 grave · 🟠 negativa · 🟢 positiva (clasificación automática por palabras clave)</i>")
 
+    if ctx.get("temas"):
+        partes += ["", "🧭 <b>Lo que está moviendo a los sectores</b>"]
+        from .noticias import afecta
+        for tema in ctx["temas"]:
+            perjudica = [grupo for _, e, grupo in tema["efectos"] if e < 0]
+            favorece = [grupo for _, e, grupo in tema["efectos"] if e > 0]
+            efecto = "; ".join(x for x in (f"favorece a {', '.join(favorece)}" if favorece else "",
+                                           f"perjudica a {', '.join(perjudica)}" if perjudica else "") if x)
+            afectadas = sorted(t for t in tenidas if afecta(tema, (info.get(t) or {}).get("subsector", "")))
+            tuyas = f" Tus empresas afectadas: {escape(', '.join(afectadas))}." if afectadas else ""
+            habitual = f", lo habitual es {num(tema['habitual'], 1)}" if tema.get("habitual") is not None else ""
+            partes.append(f"• <b>{escape(tema['tema'])}</b> ({tema['titulares']} titulares hoy{habitual}): "
+                          f"{escape(tema['porque'])}; {escape(efecto)}.{tuyas}")
+        partes.append("<i>La cartera reactiva sube o baja estas empresas en su ranking por ello.</i>")
     if ctx.get("macro"):
         partes += ["", "🌍 <b>Economía y geopolítica</b>"]
         for h in ctx["macro"][:8]:

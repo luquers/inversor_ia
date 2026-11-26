@@ -38,6 +38,7 @@ def _leer_tabla_wikipedia(url: str) -> pd.DataFrame:
         c_ticker = next((v for k, v in columnas.items() if "symbol" in k or "ticker" in k), None)
         c_sector = next((v for k, v in columnas.items() if "sector" in k), None)
         c_nombre = next((v for k, v in columnas.items() if "security" in k or "company" in k), None)
+        c_sub = next((v for k, v in columnas.items() if "sub-industry" in k or "sub industry" in k), None)
         if c_ticker is None or c_sector is None:
             continue
         return pd.DataFrame({
@@ -45,6 +46,9 @@ def _leer_tabla_wikipedia(url: str) -> pd.DataFrame:
             "ticker": tabla[c_ticker].astype(str).str.strip().str.replace(".", "-", regex=False),
             "sector": tabla[c_sector].astype(str).str.strip(),
             "nombre": tabla[c_nombre].astype(str).str.strip() if c_nombre is not None else "",
+            # Subsector (p. ej. «Semiconductors», «Application Software»): para saber a quién afectan
+            # de verdad los aranceles, el petróleo o los tipos de interés
+            "subsector": tabla[c_sub].astype(str).str.strip() if c_sub is not None else "",
         })
     raise RuntimeError(f"No encontré la tabla de empresas en {url}")
 
@@ -55,14 +59,13 @@ def obtener_universo(cfg: dict) -> pd.DataFrame:
     tipo = cfg["universo"]
     if tipo == "archivo":
         df = pd.read_csv(RAIZ / "tickers.csv")
-        for col in ("sector", "nombre"):
+        for col in ("sector", "nombre", "subsector"):
             if col not in df.columns:
                 df[col] = ""
     else:
         ruta = CACHE / f"universo_{tipo}.csv"
-        if ruta.exists() and _edad_dias(ruta) < 7:
-            df = pd.read_csv(ruta)
-        else:
+        df = pd.read_csv(ruta) if ruta.exists() and _edad_dias(ruta) < 7 else None
+        if df is None or "subsector" not in df.columns:   # caché antigua sin subsector: se renueva
             partes = [_leer_tabla_wikipedia(PAGINAS_WIKIPEDIA[i]) for i in INDICES[tipo]]
             df = pd.concat(partes).drop_duplicates("ticker")
             df.to_csv(ruta, index=False)

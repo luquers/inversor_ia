@@ -17,7 +17,8 @@ import sys
 
 import yaml
 
-from inversor.analisis import (avisos_vigilancia, cambios_top, enviar_alerta, guardar_contexto, guardar_ranking,
+from inversor.analisis import (avisos_vigilancia, cambios_top, cargar_historial_temas, enviar_alerta,
+                               guardar_contexto, guardar_ranking,
                                marcar_informe_enviado, marcar_parte_enviado, parte_ya_enviado, ranking_actual,
                                tabla_texto, toca_informe_semanal)
 from inversor import mensajes, mercado
@@ -100,8 +101,11 @@ def _nombres_empresas(ranking, tickers):
 def _contexto(cfg, ranking, tickers, macro):
     """Precios, tendencia y noticias. Si algo falla se sigue sin ello (la reactiva pierde sus filtros)."""
     try:
+        fuente = ranking if ranking is not None else _ranking_guardado()[0]
+        subsectores = fuente["subsector"].dropna().to_dict() if fuente is not None and "subsector" in fuente else {}
         return mercado.contexto(tickers, cfg["referencia"], _nombres_empresas(ranking, tickers),
-                                con_noticias=True, macro=macro)
+                                con_noticias=True, macro=macro, subsectores=subsectores,
+                                historial_temas=cargar_historial_temas())
     except Exception as e:
         print(f"No se pudo preparar el contexto de mercado: {e}")
         return None
@@ -117,7 +121,7 @@ def cmd_diario(cfg, args):
 
     # Contexto: empresas que se tienen + las 30 mejores (posibles compras de la reactiva)
     tenidas = {t for e in estados for t in e["cartera"]["posiciones"]}
-    mejores = ranking[ranking["apto"]].head(30).index.tolist() if ranking is not None else []
+    mejores = ranking[ranking["apto"]].head(40).index.tolist() if ranking is not None else []
     ctx = _contexto(cfg, ranking, tenidas | set(mejores), macro=True)
 
     resultados, vigiladas = [], list(cfg["alertas"].get("mis_acciones") or [])

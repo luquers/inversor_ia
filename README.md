@@ -138,7 +138,16 @@ Cada día de mercado el bot envía un **parte diario** con:
 - las noticias destacadas de las empresas que tienes;
 - titulares de economía y geopolítica en español.
 
-Las noticias salen de **Google News (RSS, gratuito)** y se clasifican con reglas de palabras clave (🔴 grave, 🟠 negativa, 🟢 positiva). No se usa ninguna IA ni servicio de pago. Es una clasificación sencilla que puede equivocarse, y por eso solo provoca ventas cuando el precio confirma la noticia.
+Las noticias salen de **Google News (RSS, gratuito)** y se clasifican con reglas de palabras clave (🔴 grave, 🟠 negativa, 🟢 positiva). Cada titular se traduce al español con el traductor web gratuito de Google y lleva una explicación de lo que significa («rebaja sus previsiones», «investigación de las autoridades»…). Si la traducción falla, se muestra el titular original con esa explicación. No se usa ninguna IA ni servicio de pago. La clasificación es sencilla y puede equivocarse, y por eso las ventas por noticias solo se hacen cuando el precio confirma la noticia.
+
+**Cómo influyen en las decisiones (solo la cartera reactiva):**
+
+- **Noticias de la empresa:** cada noticia positiva la sube 5 puestos en el ranking y cada negativa la baja 5, hasta 10 como mucho. Una noticia grave la baja más.
+- **Economía y geopolítica:** los titulares del día en español se agrupan en temas (aranceles, petróleo, tipos de interés, guerras, recesión, tensión tecnológica con China). Un tema solo cuenta cuando se intensifica, es decir, cuando aparece al menos 1,5 veces más de lo habitual en los últimos partes. Entonces se aplica su efecto conocido **por subsector**: por ejemplo, los aranceles perjudican a quien fabrica o importa coches, ropa o electrónica, pero no al software. Cada efecto sube o baja 5 puestos, hasta 10.
+- La reactiva compra el top 20 y vende por debajo del 50 de ese **ranking ajustado**. El bot explica en cada empresa cuánto la mueve cada cosa.
+- La semanal usa solo la fórmula, así que compararlas dirá si las noticias ayudan.
+
+Las reglas están en `inversor/noticias.py` (`TEMAS_IMPACTO`) y `inversor/mercado.py` (`PUESTOS_POR_PUNTO`, `MAXIMO_PUNTOS`).
 
 ---
 

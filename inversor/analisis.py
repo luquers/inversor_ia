@@ -114,6 +114,16 @@ def marcar_parte_enviado(fecha_mercado):
     (HISTORICO / "ultimo_parte.txt").write_text(str(pd.Timestamp(fecha_mercado).date()))
 
 
+def cargar_historial_temas() -> dict:
+    """{fecha: {tema: nº de titulares}} de los últimos partes, para saber qué es «lo habitual»."""
+    import json
+    ruta = HISTORICO / "temas.json"
+    try:
+        return json.loads(ruta.read_text(encoding="utf-8")) if ruta.exists() else {}
+    except ValueError:
+        return {}
+
+
 def guardar_contexto(ctx):
     """Noticias, mercado y geopolítica del último parte, para el panel y el bot."""
     if not ctx:
@@ -125,9 +135,16 @@ def guardar_contexto(ctx):
         "indice": ctx.get("indice") or {},
         "noticias": {t: a_json(r) for t, r in (ctx.get("noticias") or {}).items()},
         "macro": a_json(ctx.get("macro") or []),
+        "temas": ctx.get("temas") or [],
+        "ajustes": ctx.get("ajustes") or {},
     }
     HISTORICO.mkdir(exist_ok=True)
     (HISTORICO / "contexto.json").write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+    if ctx.get("conteos_temas"):
+        historial = cargar_historial_temas()
+        historial[datos["fecha"]] = ctx["conteos_temas"]
+        historial = {f: historial[f] for f in sorted(historial)[-30:]}
+        (HISTORICO / "temas.json").write_text(json.dumps(historial, ensure_ascii=False), encoding="utf-8")
 
 
 def _semana(dia):

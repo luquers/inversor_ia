@@ -29,7 +29,7 @@ Cada día se puntúan unas 1.500 empresas y se ordenan de mejor a peor: eso es e
 Usa los botones de abajo 👇`;
 
 const COMO_FUNCIONA = [
-  `📖 <b>El método (1/3)</b>
+  `📖 <b>El método (1/4)</b>
 
 Se basa en dos ideas muy conocidas:
 
@@ -44,7 +44,22 @@ Quedan fuera bancos, aseguradoras, eléctricas, inmobiliarias y empresas muy peq
 
 Los datos son las cuentas oficiales que las empresas entregan al regulador de EE. UU. (la SEC) y los precios de cada día.`,
 
-  `🗂️ <b>Los tres estilos de cartera (2/3)</b>
+  `🧭 <b>Cómo se decide qué comprar y vender (2/4)</b>
+
+<b>1. El ranking.</b> Cada día se ordenan unas 800 empresas que pasan los filtros, de la más «buena y barata» (n.º 1) a la menos. Ese puesto es la base de todas las decisiones:
+• Si una empresa está entre las <b>20 primeras</b> y hay hueco, se compra.
+• Si cae por debajo del <b>puesto 50</b>, se vende para dejar sitio a otras mejores.
+El margen entre 20 y 50 evita comprar y vender por pequeños vaivenes.
+
+<b>2. Las noticias de la empresa</b> (solo en la cartera reactiva). Cada noticia positiva (mejora previsiones, supera estimaciones…) la sube 5 puestos, y cada negativa (rebaja previsiones, mínimos del año…) la baja 5, hasta 10 como mucho. Una noticia grave (fraude, quiebra, investigación oficial) la baja mucho más y, si además la acción ya está cayendo, se vende enseguida.
+
+<b>3. La economía y la geopolítica</b> (solo en la reactiva). Cada día se leen titulares en español sobre aranceles, petróleo, tipos de interés, guerras o recesión. Cuando un tema se intensifica (sale bastante más de lo habitual), se aplica su efecto conocido sobre los negocios a los que afecta de verdad: por ejemplo, los aranceles perjudican a quien fabrica o importa coches, ropa o electrónica, pero no a una empresa de software; el petróleo caro favorece a las petroleras y perjudica a las aerolíneas. Cada efecto sube o baja 5 puestos, hasta 10.
+
+<b>4. Protecciones.</b> La reactiva vende si una acción cae un 15 % desde su máximo, y deja de comprar si el S&amp;P 500 entra en tendencia bajista.
+
+Así, el puesto final de cada empresa en la reactiva = fórmula ± noticias ± geopolítica. La semanal usa solo la fórmula, y compararlas nos dirá si las noticias ayudan.`,
+
+  `🗂️ <b>Los tres estilos de cartera (3/4)</b>
 
 Las tres eligen empresas del mismo ranking. Cambia <b>cada cuánto</b> miran y <b>cuándo</b> venden:
 
@@ -63,7 +78,7 @@ Reacciona antes, pero opera más y paga más comisiones.
 
 ¿Cuál funciona mejor? Eso es justo lo que queremos averiguar comparándolas durante meses.`,
 
-  `⚠️ <b>Antes de invertir de verdad (3/3)</b>
+  `⚠️ <b>Antes de invertir de verdad (4/4)</b>
 
 • <b>No es una recomendación.</b> Es una herramienta para aplicar un método con disciplina. Las decisiones son tuyas.
 • <b>Paciencia.</b> Este método ha tenido rachas de varios años peores que el índice. Solo funciona si se sigue también cuando va mal.
@@ -219,20 +234,26 @@ function cartera(d, nombre) {
 function porQue(d, nombre, pagina) {
   const c = d.carteras.find((x) => x.nombre === nombre);
   if (!c) return listaCarteras(d);
-  const porPagina = 6;
+  const porPagina = 4;
   const total = Math.max(1, Math.ceil(c.posiciones.length / porPagina));
   const p = Math.min(Math.max(0, pagina), total - 1);
   const trozo = c.posiciones.slice(p * porPagina, (p + 1) * porPagina);
   const bloques = trozo.map((x) => {
-    const n = (x.noticias || [])[0];
-    const noticia = n ? `\n${TONOS[n.tono] || "⚪"} ${esc(n.titulo)}${n.fuente ? ` (${esc(n.fuente)})` : ""}` : "";
-    return `<b>${esc(x.ticker)}</b> · ${esc(x.nombre)}\n${esc(x.porque)}\n<i>${esc(x.nota)}</i>${noticia}`;
+    const n = (x.noticias || []).find((h) => h.tono !== "neutra") || (x.noticias || [])[0];
+    const noticia = n ? `\n📰 ${TONOS[n.tono] || "⚪"} ${esc(n.titulo)}${n.fuente ? ` (${esc(n.fuente)})` : ""}` +
+      (n.significa ? `\n   <i>→ ${esc(n.significa)}</i>` : "") : "";
+    const ajuste = x.ajuste ? `\n🧭 ${esc(x.ajuste)}` : "";
+    return `<b>${esc(x.ticker)}</b> · ${esc(x.nombre)}\n💡 ${esc(x.porque)}${ajuste}\n📍 <i>${esc(x.nota)}</i>${noticia}`;
   });
+  const intro = p === 0 ? `<i>Cada día se ordenan ${d.n_aptas ? num(d.n_aptas) + " " : ""}empresas de mejor a peor (el ranking). ` +
+    `Se compran las 20 primeras y se venden las que caen por debajo del puesto 50.` +
+    (c.estilo === "reactiva" ? " Esta cartera además sube o baja empresas en el ranking según sus noticias y la geopolítica." : "") +
+    `</i>\n\n` : "";
   const nav = [];
   if (p > 0) nav.push(boton("◀️ Anteriores", `por:${nombre}:${p - 1}`));
   if (p < total - 1) nav.push(boton("Siguientes ▶️", `por:${nombre}:${p + 1}`));
   return {
-    texto: `🤔 <b>Por qué tiene estas empresas</b> · ${esc(c.titulo)}${total > 1 ? ` (${p + 1}/${total})` : ""}\n\n${bloques.join("\n\n") || "Todavía no tiene empresas."}`,
+    texto: `🤔 <b>Por qué tiene estas empresas</b> · ${esc(c.titulo)}${total > 1 ? ` (${p + 1}/${total})` : ""}\n\n${intro}${bloques.join("\n\n") || "Todavía no tiene empresas."}`,
     botones: [...(nav.length ? [nav] : []), volver(`c:${nombre}`)],
   };
 }
@@ -263,11 +284,24 @@ function noticiasPantalla(d) {
   const orden = { grave: 0, negativa: 1, positiva: 2, neutra: 3 };
   const vistas = new Map();
   for (const c of d.carteras) for (const p of c.posiciones) {
-    if (!vistas.has(p.ticker) && (p.noticias || []).length) vistas.set(p.ticker, p.noticias[0]);
+    const n = (p.noticias || []).find((h) => h.tono !== "neutra") || (p.noticias || [])[0];
+    if (!vistas.has(p.ticker) && n) vistas.set(p.ticker, n);
   }
   const empresas = [...vistas.entries()].filter(([, n]) => n.tono !== "neutra")
-    .sort((a, b) => orden[a[1].tono] - orden[b[1].tono]).slice(0, 10)
-    .map(([t, n]) => `${TONOS[n.tono]} <b>${esc(t)}</b>: ${esc(n.titulo)}${n.fuente ? ` (${esc(n.fuente)})` : ""}`);
+    .sort((a, b) => orden[a[1].tono] - orden[b[1].tono]).slice(0, 8)
+    .map(([t, n]) => `${TONOS[n.tono]} <b>${esc(t)}</b>: ${esc(n.titulo)}${n.fuente ? ` (${esc(n.fuente)})` : ""}` +
+      (n.significa ? `\n   <i>→ ${esc(n.significa)}</i>` : ""));
+  if ((d.temas || []).length) {
+    lineas.push("", "🧭 <b>Lo que está moviendo a los sectores</b>");
+    for (const t of d.temas) {
+      const efecto = [t.favorece.length ? `favorece a ${t.favorece.join(", ")}` : "", t.perjudica.length ? `perjudica a ${t.perjudica.join(", ")}` : ""]
+        .filter(Boolean).join("; ");
+      const habitual = t.habitual !== null && t.habitual !== undefined ? `; lo habitual, ${num(t.habitual, 1)}` : "";
+      lineas.push(`• <b>${esc(t.tema)}</b> (${t.titulares} titulares hoy${habitual}): ${esc(t.porque)}; ${esc(efecto)}.` +
+        (t.afectadas.length ? ` Tus empresas afectadas: ${esc(t.afectadas.join(", "))}.` : ""));
+    }
+    lineas.push("<i>La cartera reactiva sube o baja en su ranking a las empresas de esos sectores.</i>");
+  }
   if (empresas.length) lineas.push("", "📰 <b>Tus empresas</b>", ...empresas);
   else if (vistas.size) lineas.push("", "📰 <b>Tus empresas</b>: sin noticias destacables estos días.");
   if ((d.macro || []).length) {
@@ -295,7 +329,8 @@ function todas(d) {
 function mejores(d, pagina) {
   const porPagina = 10;
   const trozo = d.top.slice(pagina * porPagina, (pagina + 1) * porPagina);
-  const bloques = trozo.map((e) => `<b>${e.puesto}. ${esc(e.ticker)}</b> · ${esc(e.nombre)}\n<i>${esc(e.porque)}</i>`);
+  const bloques = trozo.map((e) => `<b>${e.puesto}. ${esc(e.ticker)}</b> · ${esc(e.nombre)}\n<i>${esc(e.porque)}</i>` +
+    (e.ajuste ? `\n🧭 Reactiva: ${esc(e.ajuste.replace(/^Además, /, ""))}` : ""));
   const nav = [];
   if (pagina > 0) nav.push(boton("◀️ 1 a 10", "top:0"));
   if ((pagina + 1) * porPagina < d.top.length) nav.push(boton(`${(pagina + 1) * porPagina + 1} a ${Math.min(d.top.length, (pagina + 2) * porPagina)} ▶️`, `top:${pagina + 1}`));

@@ -10,7 +10,8 @@ const posiciones = Array.from({ length: 20 }, (_, i) => ({
   valor: 500 - i, rent: i % 2 ? 1.5 : -0.7,
   porque: "Genera 15 $ de beneficio al año por cada 100 $ que vale la empresa y su salud financiera es buena (7/9).",
   nota: `Ahora es la n.º ${i + 1} del ranking. Se vendería si baja del puesto 50.`,
-  noticias: i % 3 ? [] : [{ titulo: `Empresa ${i} <cuts> guidance & more`, fuente: "Reuters", fecha: "2026-11-25", tono: ["grave", "negativa", "positiva", "neutra"][i % 4] }],
+  noticias: i % 3 ? [] : [{ titulo: `Empresa ${i} <cuts> guidance & more`, fuente: "Reuters", fecha: "2026-11-25", tono: ["grave", "negativa", "positiva", "neutra"][i % 4], significa: "rebaja sus previsiones & más" }],
+  ajuste: i === 0 ? "Además, sus noticias la bajan 5 puestos (rebaja sus previsiones). Por la fórmula sola sería la n.º 1; con el ajuste queda en la 6." : "",
 }));
 const ruta = process.argv[2];
 const DATOS = ruta ? JSON.parse(readFileSync(ruta, "utf8")) : {
@@ -29,6 +30,8 @@ const DATOS = ruta ? JSON.parse(readFileSync(ruta, "utf8")) : {
   avisos: [],
   mercado: { fecha: "2026-11-25", ticker: "SPY", cambio_dia: -0.4, sobre_media: false },
   macro: [{ titulo: "La Reserva Federal & los tipos <hoy>", fuente: "El País", tema: "Tipos e inflación" }],
+  temas: [{ tema: "Aranceles", porque: "encarecen importaciones & componentes", titulares: 3, favorece: [], perjudica: ["Industria", "Materiales"], afectadas: ["T3"] }],
+  n_aptas: 820,
 };
 
 // ---- simulación de Telegram, KV y la web de datos
@@ -146,8 +149,16 @@ if (!ruta) {
   assert.match(pantallaNoticias, /Reserva Federal &amp; los tipos &lt;hoy&gt;/);
   assert.ok(pantallaNoticias.indexOf("🔴") < pantallaNoticias.indexOf("🟠"), "Las graves primero");
   reiniciar();
+  assert.match(pantallaNoticias, /Lo que está moviendo a los sectores/);
+  assert.match(pantallaNoticias, /Aranceles.*perjudica a Industria, Materiales.*Tus empresas afectadas: T3/);
+  assert.match(pantallaNoticias, /→ rebaja sus previsiones &amp; más/);
+  reiniciar();
   await pulsa(AMIGA, "Lucia", "por:diaria:0");
-  assert.match(enviadosA(AMIGA)[0].text, /🔴 Empresa 0 &lt;cuts&gt; guidance/);
+  const porque = enviadosA(AMIGA)[0].text;
+  assert.match(porque, /🔴 Empresa 0 &lt;cuts&gt; guidance/);
+  assert.match(porque, /Cada día se ordenan 820 empresas/);
+  assert.match(porque, /🧭 Además, sus noticias la bajan 5 puestos/);
+  assert.match(porque, /→ rebaja sus previsiones/);
 }
 
 // 6. Comandos escritos

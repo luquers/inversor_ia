@@ -498,5 +498,96 @@ assert bot["mercado"]["sobre_media"] is True and bot["macro"][0]["titulo"].start
 reac = next(c for c in bot["carteras"] if c["nombre"] == "reactiva")
 assert reac["titulo"] == "Reactiva" and any(p["noticias"] for p in reac["posiciones"])
 print("[OK] Parte diario: mercado, carteras, movimientos, noticias y geopolítica; una vez por sesión")
+
+# --- 13. Noticias y geopolítica en las decisiones (cartera reactiva) y explicaciones en español
+from inversor import mercado  # noqa: E402
+
+assert nt.analizar("Acme cuts full-year guidance") == ("negativa", "rebaja sus previsiones de negocio")
+assert nt.analizar("XYZ hits 52-week low")[1] == "marca su precio más bajo del último año"
+assert nt.analizar("Law firm investigates Acme")[0] == "neutra"
+macro = [{"titulo": t} for t in ["EE. UU. anuncia nuevos aranceles al acero", "La guerra comercial se recrudece",
+                                 "Aranceles a los coches europeos", "Más aranceles a China", "Los aranceles golpean a Embraer",
+                                 "El petróleo sube un 5 % tras el recorte de la OPEP+", "El Brent se dispara a máximos",
+                                 "El crudo sube por las tensiones", "El petróleo se encarece", "Brent alcanza máximos",
+                                 "La Reserva Federal recorta los tipos", "Partido de fútbol"]]
+temas, conteos = nt.detectar_temas(macro)
+assert {t["tema"] for t in temas} == {"Aranceles", "Petróleo al alza"}, [t["tema"] for t in temas]
+assert conteos["Aranceles"] == 5 and conteos["Bajada de tipos de interés"] == 1
+assert nt.detectar_temas(macro[:3])[0] == [], "Sin historial hacen falta al menos 5 titulares"
+# Con historial: los aranceles son noticia casi a diario; solo cuentan si se intensifican
+habitual = {f"2026-11-{d:02d}": {"Aranceles": 6, "Petróleo al alza": 1} for d in range(10, 20)}
+temas_h, _ = nt.detectar_temas(macro, habitual)
+assert {t["tema"] for t in temas_h} == {"Petróleo al alza"}, "5 titulares de aranceles con 6 de media: no es noticia"
+assert temas_h[0]["habitual"] == 1.0
+subsectores = {"AUT": "Automobile Manufacturers", "ENE": "Oil & Gas Exploration & Production", "SOFT": "Application Software",
+               "AIR": "Passenger Airlines", "SAL": "Pharmaceuticals", "TEC": "Semiconductors"}
+assert nt.afecta(temas[0], "Application Software") is None, "Los aranceles no afectan al software"
+assert nt.afecta(temas[0], "Automobile Manufacturers")[0] == -1 and nt.afecta(temas[0], "Steel")[0] == 1
+noticias_aj = {"TEC": {"cuenta": {"positiva": 3, "negativa": 0, "grave": 0},
+                       "destacados": [{"tono": "positiva", "significa": "mejora sus previsiones de negocio"}]},
+               "SAL": {"cuenta": {"negativa": 1, "positiva": 0, "grave": 0},
+                       "destacados": [{"tono": "negativa", "significa": "rebaja sus previsiones de negocio"}]}}
+aj = mercado.calcular_ajustes(noticias_aj, temas, subsectores)
+assert aj["AUT"]["macro"] == -1 and aj["AUT"]["puestos"] == -5, "Aranceles perjudican a los fabricantes de coches"
+assert aj["AIR"]["macro"] == -1, "El petróleo caro perjudica a las aerolíneas"
+assert aj["ENE"]["macro"] == 1 and aj["ENE"]["puestos"] == 5
+assert "SOFT" not in aj or aj["SOFT"]["puestos"] == 0, "El software no se toca por aranceles"
+assert aj["TEC"]["noticias"] == 2 and aj["TEC"]["macro"] == -1 and aj["TEC"]["puestos"] == 5, "Máximo ±2 por noticias"
+assert aj["SAL"]["puestos"] == -5 and aj["SAL"]["frases"] == ["rebaja sus previsiones de negocio"]
+txt = mensajes.texto_ajuste(aj["AUT"], 12)
+assert "la bajan 5 puestos" in txt and "aranceles" in txt and "sería la n.º 12" in txt and "queda en la 17" in txt
+assert mensajes.texto_ajuste(None, 3) == "" and mensajes.texto_ajuste({"noticias": 0, "macro": 0}, 3) == ""
+# El ranking ajustado decide qué compra la reactiva: X18 sube 10 puestos y X05 baja 20 (fuera del top 20)
+c4 = Cartera(10_000, reglas_r)
+ops4 = c4.rebalancear(pd.Timestamp("2026-01-05"), lista, px,
+                      {"indice": {"sobre_media": True}, "ajustes": {"X05": {"puestos": -20}, "X25": {"puestos": 10}}})
+compradas4 = [o["ticker"] for o in ops4 if o["tipo"] == "COMPRA"]
+assert "X05" not in compradas4 and "X25" in compradas4 and len(compradas4) == 20
+assert any(o["ticker"] == "X25" and "puesto 16" in o["motivo"] for o in ops4), "Entra en su puesto ajustado"
+reglas_sin = {**reglas_r, "noticias": False}
+c5 = Cartera(10_000, reglas_sin)
+assert "X05" in {o["ticker"] for o in c5.rebalancear(pd.Timestamp("2026-01-05"), lista, px,
+                                                      {"indice": {"sobre_media": True}, "ajustes": {"X05": {"puestos": -20}}})}
+# Traducción gratuita: se usa si responde; si no, queda el original
+analisis_post, analisis_get = analisis.requests.post, nt.requests.get
+
+
+class _RespT:
+    ok = True
+
+    def __init__(self, lineas):
+        self._j = [[[lineas, "x"]]]
+
+    def json(self):
+        return self._j
+
+
+nt.requests.get = lambda url, params=None, **kw: _RespT("\n".join(f"ES:{x}" for x in params["q"].split("\n")))
+assert nt.traducir(["Acme cuts guidance", "Other news"]) == ["ES:Acme cuts guidance", "ES:Other news"]
+nt.requests.get = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("sin red"))
+assert nt.traducir(["Acme cuts guidance"]) == ["Acme cuts guidance"], "Si falla, el original"
+nt.requests.get = analisis_get
+# Parte con temas y titular traducido
+ctx_t = {**ctx_p, "temas": temas}
+for r in ctx_t["noticias"].values():
+    for h in r["destacados"]:
+        h["titulo_es"] = "Acme se declara en quiebra"
+info_t = {t: {**e, "subsector": "Automobile Manufacturers"} for t, e in mensajes.info_empresas(ranking).items()}
+info_t.update({t: {"nombre": "", "subsector": "Automobile Manufacturers", "puesto": None}
+               for t in sim.cargar("reactiva")["cartera"]["posiciones"]})
+parte_t = mensajes.mensaje_parte_diario([(e, []) for e in estados_p], ctx_t, cfg, info_t)
+html_telegram_valido(parte_t)
+assert "Lo que está moviendo a los sectores" in parte_t and "Aranceles" in parte_t and "Tus empresas afectadas" in parte_t
+assert "Acme se declara en quiebra" in parte_t and "→ se acoge a la protección por quiebra" in parte_t
+analisis.guardar_contexto({**ctx_t, "ajustes": aj, "conteos_temas": conteos})
+assert analisis.cargar_historial_temas()["2026-11-25"]["Aranceles"] == 5, "Se guarda lo de hoy para comparar mañana"
+web.generar_panel(cfg)
+bot = _json.loads((tmp / "docs" / "bot.json").read_text(encoding="utf-8"))
+assert bot["temas"][0]["tema"] == "Aranceles" and "fabricantes" in bot["temas"][0]["perjudica"][0] and bot["n_aptas"] > 0
+noticia_bot = next(n for c in bot["carteras"] for p in c["posiciones"] for n in p["noticias"])
+assert noticia_bot["titulo"] == "Acme se declara en quiebra" and noticia_bot["significa"]
+assert all(p["ajuste"] == "" for c in bot["carteras"] if c["nombre"] != "reactiva" for p in c["posiciones"]), \
+    "Solo la reactiva usa noticias y geopolítica para decidir"
+print("[OK] Noticias y geopolítica en las decisiones: temas por sector, ajustes del ranking, traducción y explicaciones")
 print("\nTODAS LAS PRUEBAS PASAN ✅")
 print(f"CARPETA_PANEL={ruta.parent}")
