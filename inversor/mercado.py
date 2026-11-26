@@ -23,12 +23,13 @@ def contexto(tickers, referencia: str, nombres: dict | None = None, con_noticias
     tickers = sorted(set(tickers) | {referencia})
     cierres, _, splits = descargar_precios(tickers, periodo="1y")
     cierres = cierres.dropna(how="all")
-    ultimos = cierres.ffill().iloc[-1]
+    ultimo_dia = cierres.index[-1]
     ref = cierres[referencia].dropna() if referencia in cierres else pd.Series(dtype=float)
     media200 = float(ref.tail(200).mean()) if len(ref) >= 150 else None
     ctx = {
         "fecha_precios": pd.Timestamp(cierres.index[-1]).normalize(),
-        "precios": {t: float(v) for t, v in ultimos.items() if pd.notna(v)},
+        # Solo precios del último día: uno atrasado no debe contar como precio actual ni como máximo
+        "precios": {t: float(cierres[t].iloc[-1]) for t in cierres.columns if cierres[t].last_valid_index() == ultimo_dia},
         "cambio_dia": {t: _variacion(cierres[t], 1) for t in cierres.columns},
         "cambio_5d": {t: _variacion(cierres[t], 5) for t in cierres.columns},
         "indice": {

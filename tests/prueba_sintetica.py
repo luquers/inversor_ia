@@ -466,6 +466,10 @@ ctx_split = {"precios": {t: p["ultimo_precio"] for t, p in e_r["cartera"]["posic
              "cambio_5d": {}, "noticias": {}, "splits": {t_r: pd.Series([4.0], index=[pd.Timestamp("2026-02-01")])}}
 assert sim.vigilar_cartera("reactiva", ctx_split) == [], "Un split no dispara el stop móvil"
 assert sim.cargar("reactiva")["cartera"]["posiciones"][t_r]["splits"] == ["2026-02-01"], "Y se guarda el ajuste"
+# Precio atrasado (Yahoo dio SNDK hasta el 19/11 y el resto hasta el 25/11): no cuenta como precio actual
+tabla = pd.DataFrame({"BIEN": [10.0, 11.0, 12.0], "VIEJO": [94.0, None, None]},
+                     index=pd.to_datetime(["2026-11-19", "2026-11-24", "2026-11-25"]))
+assert sim.precios_al_dia(tabla) == {"BIEN": 12.0}, "Un precio atrasado no se usa"
 print("[OK] Cartera reactiva: stop móvil, noticias graves, filtros de compra, vetos, modo prudente, vigilancia y splits")
 
 # --- 12. Parte diario

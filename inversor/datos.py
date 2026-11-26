@@ -206,8 +206,11 @@ def descargar_precios(tickers, inicio=None, fin=None, periodo: str = "10d"):
         if df is None:
             continue
         if len(lote) > 1 and "Close" in df.columns.get_level_values(0):
-            # Yahoo a veces falla con algún valor suelto («database is locked»): se reintenta solo
-            fallidos = [t for t in lote if t not in df["Close"].columns or df["Close"][t].isna().all()]
+            # Yahoo a veces falla con algún valor suelto («database is locked») o lo da con datos
+            # atrasados respecto al resto (pasó con SNDK tras un split): se reintenta solo
+            ultimo_dia = df["Close"].dropna(how="all").index.max()
+            fallidos = [t for t in lote if t not in df["Close"].columns or df["Close"][t].isna().all()
+                        or df["Close"][t].last_valid_index() < ultimo_dia]
             lotes += [[t] for t in fallidos if t not in reintentados]
             reintentados |= set(fallidos)
         niveles = df.columns.get_level_values(0)

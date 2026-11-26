@@ -99,6 +99,17 @@ def toca_rebalancear(estado, hoy=None):
     return hoy >= proxima_revision(estado)
 
 
+def precios_al_dia(cierres: pd.DataFrame) -> dict:
+    """Último precio de cada valor, solo si es del último día con datos. Un valor que Yahoo da con
+    datos atrasados no se valora con un precio viejo: la cartera mantiene el último bueno que tenía."""
+    cierres = cierres.dropna(how="all")
+    if cierres.empty:
+        return {}
+    ultimo_dia = cierres.index[-1]
+    return {t: float(cierres[t].iloc[-1]) for t in cierres.columns
+            if cierres[t].last_valid_index() == ultimo_dia}
+
+
 def actualizar_cartera(nombre, cfg, ranking=None, ctx=None):
     """Valora la cartera con los precios de hoy y, si toca, aplica las reglas de compra/venta.
     `ctx` (mercado.contexto) lo usa la cartera reactiva: noticias, caídas y tendencia del índice."""
@@ -118,7 +129,7 @@ def actualizar_cartera(nombre, cfg, ranking=None, ctx=None):
     cierres, _, splits = descargar_precios(tickers, periodo="10d")
     for nota in cartera.aplicar_splits(splits):
         print(f"Ajuste por split en «{nombre}»: {nota}")
-    precios = cierres.ffill().iloc[-1].to_dict()
+    precios = precios_al_dia(cierres)
     # El historial se fecha con el día de cierre de esos precios, no con el día en que se ejecuta
     # la tarea (GitHub a veces la retrasa varias horas y cae ya en el día siguiente)
     con_precio = cierres.dropna(how="all").index
