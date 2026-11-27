@@ -25,7 +25,7 @@
   "referencia": "SPY",
   "precio_referencia_inicio": 690.4299926757812,
   "cartera": {
-    "efectivo": 639.9250450134277,
+    "efectivo": 1080.5850450134276,
     "posiciones": {
       "PTCT": {
         "acciones": 8,
@@ -58,14 +58,6 @@
         "inicio_periodo": "2026-11-20",
         "ultimo_precio": 47.33000183105469,
         "maximo": 47.33000183105469
-      },
-      "SNDK": {
-        "acciones": 6,
-        "precio_compra": 79.23999786376953,
-        "fecha_compra": "2026-11-20",
-        "inicio_periodo": "2026-11-20",
-        "ultimo_precio": 73.61,
-        "maximo": 87.71
       },
       "UPWK": {
         "acciones": 58,
@@ -408,8 +400,23 @@
         "comision": 1.0,
         "resultado_pct": null,
         "motivo": "Entra en el puesto 20 del ranking"
+      },
+      {
+        "fecha": "2026-11-27",
+        "tipo": "VENTA",
+        "ticker": "SNDK",
+        "acciones": 6,
+        "precio": 73.61,
+        "importe": 441.66,
+        "comision": 1.0,
+        "resultado_pct": -7.1,
+        "motivo": "Stop móvil: cae un 16 % desde su máximo de 87.71",
+        "explicacion": "Ha caído un 16 % desde el máximo que alcanzó en la cartera (87,71 $), y salta la protección (stop móvil): se vende para limitar pérdidas. Pierde un 7,1 % desde que se compró."
       }
-    ]
+    ],
+    "vetadas": {
+      "SNDK": "2026-12-27"
+    }
   },
   "historial": [
     {
