@@ -2,7 +2,7 @@
   "nombre": "reactiva",
   "capital_inicial": 10000.0,
   "fecha_inicio": "2026-11-20",
-  "ultimo_rebalanceo": "2026-11-26",
+  "ultimo_rebalanceo": "2026-11-27",
   "reglas": {
     "num_posiciones": 20,
     "compras_por_tanda": 20,
@@ -436,7 +436,7 @@
     },
     {
       "fecha": "2026-11-25",
-      "cartera": 10307.47,
+      "cartera": 10306.47,
       "referencia": 10380.49
     }
   ]
